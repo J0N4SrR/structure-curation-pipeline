@@ -20,7 +20,19 @@ from typing import Optional
 
 import streamlit as st
 from rdkit import Chem, RDLogger
-from rdkit.Chem import Draw
+
+try:
+    from rdkit.Chem import Draw
+
+    DRAWING_AVAILABLE = True
+    DRAWING_ERROR = ""
+except ImportError as _error:  # pragma: no cover - depende do ambiente de deploy
+    # rdMolDraw2D linka contra libXrender/libX11/libXext do sistema, que faltam em
+    # containers slim. A renderizacao e uma funcionalidade entre varias: sem ela o
+    # app degrada para SMILES em texto, em vez de derrubar a auditoria inteira.
+    Draw = None
+    DRAWING_AVAILABLE = False
+    DRAWING_ERROR = str(_error)
 
 from curation.filters import EligibilityCriteria
 from curation.io import compute_policy_hash, preview_input
@@ -332,7 +344,8 @@ def render_exclusions(report: RunReport) -> None:
 
 
 def draw(smiles: str, size: int = 260):
-    if not smiles:
+    """Imagem 2D da estrutura, ou ``None`` quando não é possível renderizar."""
+    if not smiles or not DRAWING_AVAILABLE:
         return None
     mol = Chem.MolFromSmiles(smiles, sanitize=False)
     if mol is None:
@@ -346,6 +359,13 @@ def draw(smiles: str, size: int = 260):
 
 
 def render_lineage(report: RunReport) -> None:
+    if not DRAWING_AVAILABLE:
+        st.warning(
+            "Renderização de estruturas indisponível neste ambiente: "
+            f"`{DRAWING_ERROR}`. Os SMILES e a trajetória continuam abaixo — "
+            "faltam apenas as imagens."
+        )
+
     identifiers = [record.input_id for record in report.records]
     if not identifiers:
         return

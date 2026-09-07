@@ -1,0 +1,13 @@
+# Bibliotecas de sistema (apt) exigidas pelo Streamlit Community Cloud.
+#
+# O wheel do RDKit empacota cairo, freetype e libpng em rdkit.libs, mas
+# rdMolDraw2D linka contra as X11 do sistema, ausentes no container slim:
+#
+#   libXrender.so.1 -> libxrender1
+#   libX11.so.6     -> libx11-6
+#   libXext.so.6    -> libxext6
+#
+# Sem elas, `from rdkit.Chem import Draw` levanta ImportError e derruba o app.
+libxrender1
+libx11-6
+libxext6
