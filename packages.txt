@@ -1,3 +1,0 @@
-libxrender1
-libx11-6
-libxext6
