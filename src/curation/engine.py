@@ -21,6 +21,7 @@ from rdkit import Chem
 
 import chembl_structure_pipeline as csp
 
+from curation.filters import EligibilityCriteria, EligibilityVerdict, evaluate
 from curation.models import (
     CurationRecord,
     RejectionCode,
@@ -120,9 +121,11 @@ class EngineWrapper:
         policy_hash: str,
         probes: Sequence[Probe] = DEFAULT_PROBES,
         pipeline_version: str = PIPELINE_VERSION,
+        criteria: Optional[EligibilityCriteria] = None,
     ) -> None:
         self._policy_hash = policy_hash
         self._probes = tuple(probes)
+        self._criteria = criteria or EligibilityCriteria()
         self._pipeline_version = pipeline_version
         self._rdkit_version = rdkit.__version__
         self._csp_version = getattr(csp, "__version__", "unknown")
@@ -172,6 +175,20 @@ class EngineWrapper:
         if gate_failure is not None:
             return self._rejected(input_id, raw_smiles, gate_failure, events)
 
+        verdict = evaluate(parent, self._criteria, count_fragments(parent))
+        if not verdict.eligible:
+            return self._rejected(
+                input_id,
+                raw_smiles,
+                _Failure(
+                    verdict.rejection_code or RejectionCode.ERR_MW_LIMIT,
+                    Stage.ELIGIBILITY,
+                    verdict.detail,
+                ),
+                events,
+                verdict=verdict,
+            )
+
         identity = self._canonicalize(parent)
         if isinstance(identity, _Failure):
             return self._rejected(input_id, raw_smiles, identity, events)
@@ -187,6 +204,7 @@ class EngineWrapper:
             inchikey=inchikey,
             excluded=excluded,
             events=events,
+            verdict=verdict,
         )
 
     # --- Estágios ----------------------------------------------------------------
@@ -317,6 +335,7 @@ class EngineWrapper:
         raw_smiles: str,
         failure: _Failure,
         events: list[TransformationEvent],
+        verdict: Optional[EligibilityVerdict] = None,
     ) -> CurationRecord:
         return CurationRecord(
             input_id=input_id,
@@ -326,6 +345,8 @@ class EngineWrapper:
             rejection_stage=failure.stage,
             rejection_detail=failure.detail,
             transformations=events,
+            parent_mw=verdict.molecular_weight if verdict else None,
+            parent_heavy_atoms=verdict.heavy_atoms if verdict else None,
             **self._provenance(),
         )
 
@@ -340,6 +361,7 @@ class EngineWrapper:
         inchikey: str,
         excluded: bool,
         events: list[TransformationEvent],
+        verdict: EligibilityVerdict,
     ) -> CurationRecord:
         removed = self._removed_fragments(standardized, parent)
         defined_before = count_defined_stereocenters(original)
@@ -362,6 +384,8 @@ class EngineWrapper:
             n_undefined_stereocenters=self._undefined_stereocenters(parent),
             n_stereocenters_total=self._total_stereocenters(parent),
             n_components_parent=count_fragments(parent),
+            parent_mw=verdict.molecular_weight,
+            parent_heavy_atoms=verdict.heavy_atoms,
             excluded_flag=excluded,
             **self._provenance(),
         )

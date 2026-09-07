@@ -31,6 +31,7 @@ from rdkit import Chem
 
 import chembl_structure_pipeline as csp
 
+from curation.dedup import CONFLICT_COLUMNS, Collision
 from curation.engine import PIPELINE_VERSION
 from curation.models import CurationRecord
 
@@ -350,6 +351,14 @@ _AUDIT_COLUMNS = (
 
 MANIFEST_NAME = "manifest.json"
 
+#: Fluxos de saída, todos sob a mesma garantia de atomicidade.
+_STREAMS: tuple[tuple[str, Sequence[str]], ...] = (
+    ("curated", _CURATED_COLUMNS),
+    ("rejected", _REJECTED_COLUMNS),
+    ("audit", _AUDIT_COLUMNS),
+    ("conflicts", CONFLICT_COLUMNS),
+)
+
 
 class BatchWriter:
     """Escreve as saídas de um lote com garantia de atomicidade.
@@ -385,6 +394,9 @@ class BatchWriter:
         self.n_passed = 0
         self.n_rejected = 0
         self.rejection_counts: dict[str, int] = {}
+        self.collision_counts: dict[str, int] = {}
+        self.n_conflicts = 0
+        self.n_unique = 0
         self.policy_hash_mismatches = 0
 
         self._started_at: Optional[datetime] = None
@@ -399,11 +411,7 @@ class BatchWriter:
         self._remove_stale_temporaries()
         self._started_at = datetime.now(timezone.utc)
 
-        for name, columns in (
-            ("curated", _CURATED_COLUMNS),
-            ("rejected", _REJECTED_COLUMNS),
-            ("audit", _AUDIT_COLUMNS),
-        ):
+        for name, columns in _STREAMS:
             handle = self._temp_path(name).open("w", encoding="utf-8", newline="")
             writer = csv.DictWriter(handle, fieldnames=list(columns))
             writer.writeheader()
@@ -458,6 +466,20 @@ class BatchWriter:
                 self._project(payload, _REJECTED_COLUMNS)
             )
 
+    def write_conflict(self, collision: Collision) -> None:
+        """Registra uma colisão de identidade em ``conflicts.csv``.
+
+        O relatório é sempre criado, mesmo vazio: ausência de conflitos é um
+        resultado, e precisa ser distinguível de "o relatório não foi gerado".
+        """
+        if self._closed:
+            raise RuntimeError("BatchWriter ja foi encerrado")
+
+        self.n_conflicts += 1
+        key = collision.collision_type.value
+        self.collision_counts[key] = self.collision_counts.get(key, 0) + 1
+        self._writers["conflicts"].writerow(collision.as_row())
+
     def write_all(self, records: Iterable[CurationRecord]) -> None:
         for record in records:
             self.write(record)
@@ -500,14 +522,14 @@ class BatchWriter:
     def _abort(self) -> None:
         """Encerra descartando tudo: sem arquivos finais, sem manifesto."""
         self._close_handles(durable=False)
-        for name in ("curated", "rejected", "audit"):
+        for name, _ in _STREAMS:
             self._temp_path(name).unlink(missing_ok=True)
         self._closed = True
 
     def _commit(self) -> None:
         """Promove os temporários e grava o manifesto por último."""
         self._close_handles(durable=True)
-        for name in ("curated", "rejected", "audit"):
+        for name, _ in _STREAMS:
             os.replace(self._temp_path(name), self._final_path(name))
 
         self._write_manifest()
@@ -532,10 +554,14 @@ class BatchWriter:
                 "rejected": self.n_rejected,
             },
             "rejection_counts": dict(sorted(self.rejection_counts.items())),
+            "deduplication": {
+                "unique": self.n_unique,
+                "conflicts": self.n_conflicts,
+                "by_type": dict(sorted(self.collision_counts.items())),
+            },
             "policy_hash_mismatches": self.policy_hash_mismatches,
             "outputs": {
-                name: self._final_path(name).name
-                for name in ("curated", "rejected", "audit")
+                name: self._final_path(name).name for name, _ in _STREAMS
             },
         }
 

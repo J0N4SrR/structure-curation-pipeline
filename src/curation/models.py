@@ -25,6 +25,7 @@ class Stage(str, Enum):
     STANDARDIZE = "STANDARDIZE"
     GET_PARENT = "GET_PARENT"
     VALENCE_GATE = "VALENCE_GATE"
+    ELIGIBILITY = "ELIGIBILITY"
     CANONICALIZE = "CANONICALIZE"
 
 
@@ -45,6 +46,8 @@ class RejectionCode(str, Enum):
     ERR_INCHI = "ERR_INCHI"
     ERR_EMPTY = "ERR_EMPTY"
     ERR_INTERNAL = "ERR_INTERNAL"
+    ERR_MW_LIMIT = "ERR_MW_LIMIT"
+    ERR_HA_LIMIT = "ERR_HA_LIMIT"
 
 
 class TransformationEvent(BaseModel):
@@ -98,6 +101,8 @@ class CurationRecord(BaseModel):
     n_undefined_stereocenters: int = 0
     n_stereocenters_total: int = 0
     n_components_parent: int = 0
+    parent_mw: Optional[float] = None
+    parent_heavy_atoms: Optional[int] = None
 
     # --- Metadados de proveniência ---
     excluded_flag: bool = False

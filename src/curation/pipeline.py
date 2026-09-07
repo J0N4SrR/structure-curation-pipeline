@@ -17,7 +17,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Iterator, Optional, Sequence, Union
 
+from curation.dedup import DedupIndex
 from curation.engine import PIPELINE_VERSION, EngineWrapper
+from curation.filters import EligibilityCriteria
 from curation.io import BatchWriter, Source, read_input
 from curation.models import CurationRecord, RejectionCode, Stage
 
@@ -30,24 +32,56 @@ class BatchSummary:
     passed: int
     rejected: int
     rejection_counts: dict[str, int] = field(default_factory=dict)
+    unique: int = 0
+    conflicts: int = 0
+    collision_counts: dict[str, int] = field(default_factory=dict)
     out_dir: Optional[Path] = None
 
     @property
     def pass_rate(self) -> float:
         return self.passed / self.total if self.total else 0.0
 
-    def format_report(self) -> str:
-        lines = [
-            f"entradas processadas : {self.total}",
-            f"aprovados            : {self.passed} ({self.pass_rate:.1%})",
-            f"rejeitados           : {self.rejected}",
-        ]
-        for code, count in sorted(
+    def top_rejections(self, limit: int = 5) -> list[tuple[str, int]]:
+        """Motivos de rejeição mais frequentes, do maior para o menor."""
+        return sorted(
             self.rejection_counts.items(), key=lambda item: (-item[1], item[0])
-        ):
-            lines.append(f"    {code:<20s} {count}")
+        )[:limit]
+
+    def format_report(self) -> str:
+        """Sumário legível para o terminal."""
+        width = 22
+        lines = [
+            "-" * 52,
+            "SUMARIO DA EXECUCAO",
+            "-" * 52,
+            f"{'entradas processadas':<{width}} {self.total:>8,}",
+            f"{'aprovados':<{width}} {self.passed:>8,}   {self.pass_rate:6.1%}",
+            f"{'rejeitados':<{width}} {self.rejected:>8,}   "
+            f"{1 - self.pass_rate:6.1%}",
+        ]
+
+        top = self.top_rejections()
+        if top:
+            lines.append("")
+            lines.append("top motivos de rejeicao")
+            for code, count in top:
+                share = count / self.total if self.total else 0.0
+                lines.append(f"    {code:<20s} {count:>8,}   {share:6.1%}")
+
+        if self.unique or self.conflicts:
+            lines.append("")
+            lines.append("deduplicacao")
+            lines.append(f"    {'identidades unicas':<20s} {self.unique:>8,}")
+            lines.append(f"    {'colisoes':<20s} {self.conflicts:>8,}")
+            for kind, count in sorted(
+                self.collision_counts.items(), key=lambda item: (-item[1], item[0])
+            ):
+                lines.append(f"        {kind:<18s} {count:>8,}")
+
         if self.out_dir is not None:
-            lines.append(f"saida                : {self.out_dir}")
+            lines.append("")
+            lines.append(f"saida: {self.out_dir}")
+        lines.append("-" * 52)
         return "\n".join(lines)
 
 
@@ -66,11 +100,17 @@ class CurationPipeline:
         policy_hash: str,
         engine: Optional[EngineWrapper] = None,
         pipeline_version: str = PIPELINE_VERSION,
+        criteria: Optional[EligibilityCriteria] = None,
+        deduplicate: bool = True,
     ) -> None:
         self.policy_hash = policy_hash
         self.pipeline_version = pipeline_version
+        self.criteria = criteria or EligibilityCriteria()
+        self.deduplicate = deduplicate
         self._engine = engine or EngineWrapper(
-            policy_hash=policy_hash, pipeline_version=pipeline_version
+            policy_hash=policy_hash,
+            pipeline_version=pipeline_version,
+            criteria=self.criteria,
         )
 
     # --- Registro único --------------------------------------------------------
@@ -118,17 +158,29 @@ class CurationPipeline:
         manifesto — a saída fica reconhecidamente incompleta em vez de parecer boa.
         """
         out_path = Path(out_dir)
+        index = DedupIndex() if self.deduplicate else None
+
         with BatchWriter(
             out_path, self.policy_hash, pipeline_version=self.pipeline_version
         ) as writer:
             for record in self.process_many(read_input(source)):
                 writer.write(record)
+                if index is not None:
+                    collision = index.add(record)
+                    if collision is not None:
+                        writer.write_conflict(collision)
+
+            if index is not None:
+                writer.n_unique = index.unique_count
 
             summary = BatchSummary(
                 total=writer.n_total,
                 passed=writer.n_passed,
                 rejected=writer.n_rejected,
                 rejection_counts=dict(writer.rejection_counts),
+                unique=writer.n_unique,
+                conflicts=writer.n_conflicts,
+                collision_counts=dict(writer.collision_counts),
                 out_dir=out_path,
             )
         return summary

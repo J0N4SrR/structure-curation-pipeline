@@ -6,6 +6,8 @@ registro produzido.
 """
 
 from curation.engine import PIPELINE_VERSION, EngineWrapper
+from curation.dedup import Collision, CollisionType, DedupIndex
+from curation.filters import EligibilityCriteria
 from curation.pipeline import BatchSummary, CurationPipeline
 from curation.models import (
     CurationRecord,
@@ -16,6 +18,10 @@ from curation.models import (
 
 __all__ = [
     "BatchSummary",
+    "Collision",
+    "CollisionType",
+    "DedupIndex",
+    "EligibilityCriteria",
     "CurationPipeline",
     "CurationRecord",
     "EngineWrapper",
