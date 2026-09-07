@@ -1,0 +1,8 @@
+# Dependencias de execucao do app no Streamlit Community Cloud.
+# Versoes fixadas: mudancas de versao do RDKit alteram percepcao de aromaticidade
+# e regras de padronizacao, entao um deploy que "flutua" produz resultados que nao
+# reconciliam com os lotes gerados localmente.
+rdkit==2026.3.5
+chembl_structure_pipeline==1.2.4
+pydantic==2.13.4
+streamlit>=1.30
