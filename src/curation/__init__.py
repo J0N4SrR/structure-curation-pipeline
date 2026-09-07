@@ -6,6 +6,7 @@ registro produzido.
 """
 
 from curation.engine import PIPELINE_VERSION, EngineWrapper
+from curation.pipeline import BatchSummary, CurationPipeline
 from curation.models import (
     CurationRecord,
     RejectionCode,
@@ -14,6 +15,8 @@ from curation.models import (
 )
 
 __all__ = [
+    "BatchSummary",
+    "CurationPipeline",
     "CurationRecord",
     "EngineWrapper",
     "PIPELINE_VERSION",

@@ -24,6 +24,7 @@ class Stage(str, Enum):
     PARSE = "PARSE"
     STANDARDIZE = "STANDARDIZE"
     GET_PARENT = "GET_PARENT"
+    VALENCE_GATE = "VALENCE_GATE"
     CANONICALIZE = "CANONICALIZE"
 
 
@@ -43,6 +44,7 @@ class RejectionCode(str, Enum):
     ERR_CANONICALIZE = "ERR_CANONICALIZE"
     ERR_INCHI = "ERR_INCHI"
     ERR_EMPTY = "ERR_EMPTY"
+    ERR_INTERNAL = "ERR_INTERNAL"
 
 
 class TransformationEvent(BaseModel):

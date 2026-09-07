@@ -168,6 +168,10 @@ class EngineWrapper:
                 ),
             )
 
+        gate_failure = self._valence_gate(parent, excluded)
+        if gate_failure is not None:
+            return self._rejected(input_id, raw_smiles, gate_failure, events)
+
         identity = self._canonicalize(parent)
         if isinstance(identity, _Failure):
             return self._rejected(input_id, raw_smiles, identity, events)
@@ -251,6 +255,29 @@ class EngineWrapper:
                 "estrutura-mae vazia apos remocao de fragmentos",
             )
         return parent, bool(excluded)
+
+    def _valence_gate(
+        self, parent: Chem.Mol, excluded: bool
+    ) -> Optional[_Failure]:
+        """Sanitização estrita, aplicada **depois** do motor (D-09).
+
+        Aqui é o único lugar legítimo para reprovar por valência: o normalizador já
+        teve a chance de reparar a estrutura. Um portão anterior descartaria amônios
+        quaternários neutros e diazônios, que a referência conserta.
+
+        Compostos com ``exclude_flag`` ativo são dispensados do portão, porque o
+        próprio motor pula a sanitização deles (D-03) — aplicá-la aqui revogaria a
+        decisão de preservá-los. O caso concreto é um carborano de 8 boros presente
+        no corpus da referência, anotado lá como ">7 Boron atoms": ele atravessa o
+        motor e seria descartado por um portão incondicional.
+        """
+        if excluded:
+            return None
+        try:
+            Chem.SanitizeMol(Chem.Mol(parent))
+        except Exception as error:
+            return _Failure(_classify(error), Stage.VALENCE_GATE, str(error))
+        return None
 
     def _canonicalize(self, parent: Chem.Mol) -> tuple[str, str] | _Failure:
         """SMILES canônico isomérico e InChIKey.
