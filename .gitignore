@@ -1,0 +1,112 @@
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Distribuição / empacotamento
+build/
+dist/
+sdist/
+wheels/
+*.egg-info/
+*.egg
+.eggs/
+MANIFEST
+
+# Ambientes virtuais
+.venv/
+venv/
+env/
+ENV/
+.conda/
+.python-version
+
+# Testes / cobertura / lint
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.hypothesis/
+.mypy_cache/
+.dmypy.json
+.ruff_cache/
+.pytype/
+
+# ---------------------------------------------------------------------------
+# Jupyter / notebooks
+# ---------------------------------------------------------------------------
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# ---------------------------------------------------------------------------
+# IDEs e editores
+# ---------------------------------------------------------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ---------------------------------------------------------------------------
+# Sistema operacional
+# ---------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------------------------------------------------------------------------
+# Configuração local / segredos
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.local.toml
+*.local.yaml
+*.local.yml
+
+# ---------------------------------------------------------------------------
+# Streamlit
+# ---------------------------------------------------------------------------
+.streamlit/secrets.toml
+
+# ---------------------------------------------------------------------------
+# Saídas do pipeline (dados derivados — não versionar)
+# Entradas de referência e fixtures de teste ficam em data/raw/ e tests/data/,
+# que NÃO são ignorados de propósito: são insumo de reprodutibilidade.
+# ---------------------------------------------------------------------------
+data/interim/
+data/processed/
+outputs/
+runs/
+logs/
+*.log
+
+# Artefatos químicos volumosos gerados pelo pipeline
+*.sdf.gz
+*.smi.gz
+*.pkl
+*.pickle
+*.parquet
+*.feather
+*.h5
+*.hdf5
+*.sqlite
+*.db
+
+# Caches de cálculo (descritores, fingerprints)
+.cache/
+cache/
+
+# ---------------------------------------------------------------------------
+# Exceções: insumos de reprodutibilidade são versionados mesmo em formato
+# binário (fixtures de teste e dados brutos de referência).
+# ---------------------------------------------------------------------------
+!tests/data/**
+!data/raw/**
