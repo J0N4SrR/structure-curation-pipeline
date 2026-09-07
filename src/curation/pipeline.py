@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Iterator, Optional, Sequence, Union
+from typing import Callable, Iterable, Iterator, Optional, Sequence, Union
 
 import time
 
@@ -194,6 +194,7 @@ class CurationPipeline:
         input_bytes: Optional[bytes] = None,
         input_name: str = "input",
         policy_path: str = "docs/decisions.md",
+        progress: Optional[Callable[[int, int, str], None]] = None,
     ):
         """Executa um lote em memória e devolve um :class:`RunReport` completo.
 
@@ -218,11 +219,14 @@ class CurationPipeline:
         index = DedupIndex() if self.deduplicate else None
         started = time.perf_counter()
         records = []
-        for input_id, raw_smiles in records_in:
+        total = len(records_in)
+        for position, (input_id, raw_smiles) in enumerate(records_in, start=1):
             record = self.process_single(raw_smiles, input_id)
             records.append(record)
             if index is not None:
                 index.add(record)
+            if progress is not None:
+                progress(position, total, input_id)
         elapsed = time.perf_counter() - started
 
         report = build_run_report(

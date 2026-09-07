@@ -1,15 +1,18 @@
 """Interface Streamlit: cliente fino sobre a camada de engenharia.
 
-Este módulo é **exclusivamente apresentação**. Nenhuma regra química, nenhum
-critério de aceitação e nenhuma métrica são calculados aqui: tudo vem de
-:mod:`curation.pipeline`, :mod:`curation.reporting` e :mod:`curation.provenance`.
+Apresentação apenas. Nenhuma regra química, critério de aceitação, métrica ou
+linhagem é calculada aqui — tudo vem de :mod:`curation.pipeline`,
+:mod:`curation.reporting`, :mod:`curation.provenance` e :mod:`curation.io`.
 
-Quando uma informação não existe na camada de engenharia, a interface diz que não
-existe. Não há estado estimado, progresso simulado nem linhagem inferida.
+Quando um dado não existe na engenharia, a interface diz que não existe. Não há
+progresso simulado, estado estimado nem transformação inferida.
+
+Organização em três níveis de detalhe: o essencial fica visível, a explicação abre
+ao clicar numa etapa, e os metadados técnicos ficam atrás de "detalhes".
 
 Execução::
 
-    streamlit run src/curation/app.py
+    streamlit run streamlit_app.py
 """
 
 from __future__ import annotations
@@ -27,8 +30,8 @@ try:
     DRAWING_AVAILABLE = True
     DRAWING_ERROR = ""
 except ImportError as _error:  # pragma: no cover - depende do ambiente de deploy
-    # rdMolDraw2D linka contra libXrender/libX11/libXext do sistema, que faltam em
-    # containers slim. A renderizacao e uma funcionalidade entre varias: sem ela o
+    # rdMolDraw2D linka contra libXrender/libX11/libXext do sistema, ausentes em
+    # containers slim. A renderização é uma funcionalidade entre várias: sem ela o
     # app degrada para SMILES em texto, em vez de derrubar a auditoria inteira.
     Draw = None
     DRAWING_AVAILABLE = False
@@ -39,7 +42,6 @@ from curation.io import compute_policy_hash, preview_input
 from curation.pipeline import CurationPipeline
 from curation.reporting import (
     DEDUP_STAGE,
-    EXPORTABLE_COLUMNS,
     RunReport,
     StageReport,
     StageStatus,
@@ -56,294 +58,491 @@ RDLogger.DisableLog("rdApp.*")
 
 DEFAULT_DECISIONS = Path("docs/decisions.md")
 
-STATUS_STYLE: dict[StageStatus, tuple[str, str]] = {
-    StageStatus.PENDING: ("○", "#9aa0a6"),
-    StageStatus.RUNNING: ("◐", "#1a73e8"),
-    StageStatus.SUCCESS: ("✓", "#1e8e3e"),
-    StageStatus.WARNING: ("!", "#f9ab00"),
-    StageStatus.FAILED: ("✗", "#d93025"),
-    StageStatus.SKIPPED: ("–", "#9aa0a6"),
+
+# --- Vocabulário de apresentação ------------------------------------------------
+#
+# Rótulos legíveis para os estágios reais do motor. É tradução de nome, não
+# reagrupamento: cada rótulo corresponde a um estágio que o pipeline de fato
+# executa, para que o funil exibido case com o código.
+
+STAGE_LABELS: dict[str, str] = {
+    "PARSE": "Leitura",
+    "STANDARDIZE": "Padronização",
+    "GET_PARENT": "Remoção de sais",
+    "VALENCE_GATE": "Validação",
+    "ELIGIBILITY": "Elegibilidade",
+    "CANONICALIZE": "Canonicalização",
+    DEDUP_STAGE: "Deduplicação",
 }
 
-DEFAULT_EXPORT_COLUMNS = (
-    "input_id",
-    "raw_smiles",
-    "curated_smiles",
-    "inchikey",
-    "status",
-)
+STAGE_HELP: dict[str, str] = {
+    "PARSE": "Lê o texto da estrutura e monta o grafo químico. Aqui só são "
+    "recusadas estruturas que o programa não consegue interpretar.",
+    "STANDARDIZE": "Aplica as regras de padronização do ChEMBL: normaliza grupos "
+    "funcionais, separa metais ligados de forma inadequada e ajusta cargas.",
+    "GET_PARENT": "Remove contra-íons e solventes, isolando a estrutura principal. "
+    "Misturas legítimas de dois princípios ativos são preservadas.",
+    "VALENCE_GATE": "Verifica se a estrutura resultante é quimicamente válida. Vem "
+    "depois da padronização de propósito, para dar ao motor a chance de corrigir.",
+    "ELIGIBILITY": "Aplica os limites de escopo do estudo (peso molecular e número "
+    "de átomos) sobre a estrutura principal, nunca sobre o sal.",
+    "CANONICALIZE": "Gera a forma canônica da estrutura e o identificador InChIKey.",
+    DEDUP_STAGE: "Identifica estruturas repetidas pelo InChIKey completo.",
+}
+
+STATUS_LABELS: dict[StageStatus, tuple[str, str, str]] = {
+    StageStatus.PENDING: ("○", "Aguardando", "#9aa0a6"),
+    StageStatus.RUNNING: ("◐", "Executando", "#1a73e8"),
+    StageStatus.SUCCESS: ("✓", "Concluído", "#1e8e3e"),
+    StageStatus.WARNING: ("!", "Concluído com remoções", "#b06000"),
+    StageStatus.FAILED: ("✗", "Falhou", "#d93025"),
+    StageStatus.SKIPPED: ("–", "Ignorado", "#9aa0a6"),
+}
+
+REJECTION_LABELS: dict[str, str] = {
+    "ERR_SYNTAX": "Estrutura não interpretável",
+    "ERR_EMPTY": "Estrutura vazia",
+    "ERR_VALENCE": "Valência inválida",
+    "ERR_KEKULIZE": "Aromaticidade inconsistente",
+    "ERR_SANITIZE": "Estrutura quimicamente inválida",
+    "ERR_STANDARDIZE": "Falha na padronização",
+    "ERR_GET_PARENT": "Falha ao isolar a estrutura principal",
+    "ERR_CANONICALIZE": "Falha ao gerar a forma canônica",
+    "ERR_INCHI": "Falha ao gerar o InChIKey",
+    "ERR_ORGANOMETALLIC": "Organometálico descartado por política",
+    "ERR_MW_LIMIT": "Peso molecular acima do limite",
+    "ERR_HA_LIMIT": "Átomos demais",
+    "ERR_INTERNAL": "Erro interno do processamento",
+    "EXACT_DUPLICATE": "Duplicata",
+    "ANNOTATION_CONFLICT": "Duplicata com anotação divergente",
+    "BLOCK1_COLLISION": "Estrutura aparentada (não é duplicata)",
+    "UNKNOWN": "Motivo não registrado",
+}
+
+#: Colunas de exportação com rótulo legível. Só entram colunas que a engenharia
+#: realmente produz — não há "warnings" no schema, então não é oferecida.
+EXPORT_LABELS: list[tuple[str, str]] = [
+    ("input_id", "Identificador"),
+    ("raw_smiles", "Estrutura original"),
+    ("curated_smiles", "Estrutura curada"),
+    ("inchikey", "InChIKey"),
+    ("status", "Status"),
+    ("rejection_code", "Motivo da rejeição"),
+    ("rejection_detail", "Detalhe da rejeição"),
+    ("inchi", "InChI"),
+    ("molecular_formula", "Fórmula molecular"),
+    ("parent_mw", "Peso molecular"),
+    ("parent_heavy_atoms", "Átomos pesados"),
+    ("removed_fragments", "Fragmentos removidos"),
+    ("salt_removed", "Teve sal removido"),
+    ("n_components_parent", "Componentes"),
+    ("delta_stereocenters", "Variação de centros quirais"),
+    ("transformations", "Transformações registradas"),
+    ("policy_hash", "Hash da política"),
+]
+
+DEFAULT_EXPORT = ("input_id", "raw_smiles", "curated_smiles", "inchikey", "status")
+
+HELP = {
+    "max_mw": "Limite máximo de peso molecular do critério de elegibilidade. O "
+    "valor usado nesta execução é registrado no manifesto para permitir reprodução.",
+    "max_ha": "Número máximo de átomos não-hidrogênio permitido pelo critério de "
+    "elegibilidade.",
+    "dedup": "Identifica estruturas duplicadas usando o InChIKey completo. O "
+    "primeiro bloco do InChIKey não é usado isoladamente para declarar duplicatas — "
+    "enantiômeros o compartilham.",
+    "policy": "Identificador da versão da política de curadoria usada nesta "
+    "execução. Permite verificar se duas execuções usaram a mesma política.",
+    "inchikey": "Identificador textual derivado da representação InChI da estrutura.",
+    "formats": "Você pode enviar CSV, TSV ou SMI. O sistema identifica a coluna de "
+    "estruturas quando aplicável e faz uma triagem sintática antes da execução.",
+    "manifest": "O manifesto registra as informações necessárias para identificar e "
+    "auditar esta execução: parâmetros, versões, hashes e metadados.",
+}
 
 
-# --- Estilo ---------------------------------------------------------------------
+def label_stage(name: str) -> str:
+    return STAGE_LABELS.get(name, name.replace("_", " ").title())
+
+
+def label_reason(code: str) -> str:
+    return REJECTION_LABELS.get(code, code)
+
+
+# --- Estilo ----------------------------------------------------------------------
 
 
 def inject_styles() -> None:
     st.markdown(
         """
         <style>
-          .block-container { padding-top: 2rem; max-width: 1200px; }
-          .stage-card {
-            border: 1px solid rgba(128,128,128,.28); border-radius: 6px;
-            padding: .55rem .5rem; text-align: center; line-height: 1.35;
-          }
-          .stage-name { font-size: .68rem; letter-spacing: .06em;
-            text-transform: uppercase; opacity: .75; }
-          .stage-mark { font-size: 1.25rem; font-weight: 700; }
-          .stage-count { font-size: 1.1rem; font-weight: 600; font-variant-numeric: tabular-nums; }
-          .stage-drop { font-size: .7rem; color: #d93025; }
-          .stage-time { font-size: .66rem; opacity: .6; font-variant-numeric: tabular-nums; }
-          .run-banner { display:flex; justify-content:space-between; align-items:baseline;
-            border-bottom:1px solid rgba(128,128,128,.28); padding-bottom:.5rem; margin-bottom:1rem; }
-          .run-title { font-size:1.05rem; font-weight:700; letter-spacing:.04em; }
-          .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:.78rem; }
+          .block-container { padding-top: 2.2rem; max-width: 1150px; }
+          .app-title { font-size: 1.5rem; font-weight: 700; margin-bottom: .1rem; }
+          .app-sub { opacity: .7; font-size: .92rem; }
+          .run-chip { font-size: .8rem; opacity: .75;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+          .stage-box { border: 1px solid rgba(128,128,128,.3); border-radius: 6px;
+            padding: .5rem .35rem; text-align: center; line-height: 1.4; }
+          .stage-label { font-size: .72rem; opacity: .8; }
+          .stage-mark { font-size: 1.15rem; font-weight: 700; }
+          .stage-n { font-size: 1.15rem; font-weight: 600;
+            font-variant-numeric: tabular-nums; }
+          .stage-out { font-size: .7rem; color: #b06000; }
+          .stage-ms { font-size: .66rem; opacity: .55;
+            font-variant-numeric: tabular-nums; }
+          .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: .78rem; }
+          .arrow { text-align:center; padding-top:2.1rem; opacity:.35; }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
 
-def stage_card(stage: StageReport) -> str:
-    mark, color = STATUS_STYLE[stage.status]
-    drop = (
-        f"<div class='stage-drop'>−{stage.n_excluded}</div>"
-        if stage.has_exclusions
-        else "<div class='stage-drop'>&nbsp;</div>"
-    )
-    duration = (
-        f"<div class='stage-time'>{stage.duration_seconds * 1000:.0f} ms</div>"
-        if stage.duration_seconds
-        else "<div class='stage-time'>&nbsp;</div>"
-    )
-    return (
-        f"<div class='stage-card'>"
-        f"<div class='stage-name'>{stage.name.replace('_', ' ')}</div>"
-        f"<div class='stage-mark' style='color:{color}'>{mark}</div>"
-        f"<div class='stage-count'>{stage.n_output}</div>"
-        f"{drop}{duration}</div>"
-    )
+# --- Nível 1: cabeçalho e ajuda global ---------------------------------------------
 
 
-# --- Barra lateral ---------------------------------------------------------------
+def render_header(report: Optional[RunReport]) -> None:
+    left, right = st.columns([3, 1])
+    with left:
+        st.markdown("<div class='app-title'>Structure Curation</div>", unsafe_allow_html=True)
+        st.markdown(
+            "<div class='app-sub'>Padronize, valide e rastreie suas estruturas "
+            "químicas.</div>",
+            unsafe_allow_html=True,
+        )
+    with right:
+        if report is not None:
+            st.markdown(
+                f"<div class='run-chip'>Run {report.provenance.run_id}</div>"
+                "<div style='color:#1e8e3e;font-weight:600'>✓ Concluído</div>",
+                unsafe_allow_html=True,
+            )
+
+    with st.expander("Como funciona"):
+        st.markdown(
+            "O pipeline recebe estruturas químicas, executa as etapas de validação "
+            "e curadoria e produz resultados rastreáveis. Cada execução registra "
+            "parâmetros, versões, decisões e resultados, para facilitar auditoria e "
+            "reprodução.\n\n"
+            "**O caminho é sempre o mesmo:** carregar → configurar → executar → "
+            "ver o pipeline → entender o resultado → investigar uma estrutura → "
+            "baixar os dados → reproduzir a execução."
+        )
 
 
-def sidebar() -> dict:
-    """Coleta parâmetros. Não valida regras — só encaminha à engenharia."""
-    st.sidebar.markdown("### Parâmetros de curadoria")
-    st.sidebar.caption(
-        "Os cortes incidem sobre a estrutura-mãe isolada, nunca sobre o sal (D-10)."
-    )
-    max_mw = st.sidebar.number_input(
+def render_global_help() -> None:
+    with st.expander("Como interpretar esta página"):
+        st.markdown(
+            "**Cores e símbolos das etapas** — cada estado aparece com ícone *e* "
+            "texto, nunca só por cor:\n\n"
+            "| | significado |\n| --- | --- |\n"
+            "| ○ Aguardando | a etapa ainda não rodou |\n"
+            "| ◐ Executando | a etapa está em andamento |\n"
+            "| ✓ Concluído | todas as estruturas passaram |\n"
+            "| ! Concluído com remoções | a etapa removeu estruturas |\n"
+            "| ✗ Falhou | nenhuma estrutura passou |\n"
+            "| – Ignorado | a etapa não se aplicou |\n\n"
+            "**O que é uma etapa** — uma operação do pipeline. O número embaixo do "
+            "ícone é quantas estruturas *saíram* dela.\n\n"
+            "**Aprovada, rejeitada e duplicata são coisas diferentes.** Rejeitada é "
+            "uma estrutura que não passou por algum critério, e o motivo fica "
+            "registrado. Duplicata é uma estrutura válida que já havia aparecido "
+            "antes — ela continua no arquivo completo, apenas não conta como "
+            "identidade nova.\n\n"
+            "**Estruturas aparentadas não são duplicatas.** Dois enantiômeros "
+            "compartilham o começo do InChIKey mas são compostos distintos, com "
+            "atividades biológicas possivelmente diferentes. O sistema os reporta "
+            "como aparentados e nunca os funde.\n\n"
+            "**No CSV**, cada linha é uma estrutura de entrada. A coluna `status` "
+            "diz se foi aprovada, e `rejection_code` diz por que não foi.\n\n"
+            "**Para reproduzir**, use a seção *Proveniência da execução*."
+        )
+
+
+# --- Nível 1: entrada ---------------------------------------------------------------
+
+
+def render_input() -> tuple[Optional[bytes], str]:
+    st.markdown("### 1. Carregar estruturas")
+    upload_tab, paste_tab = st.tabs(["📁 Enviar arquivo", "✎ Colar estruturas"])
+
+    raw: Optional[bytes] = None
+    name = ""
+
+    with upload_tab:
+        st.caption("CSV · TSV · SMI", help=HELP["formats"])
+        uploaded = st.file_uploader(
+            "Arquivo", type=["csv", "tsv", "smi", "smiles", "txt"],
+            label_visibility="collapsed",
+        )
+        if uploaded is not None:
+            raw, name = uploaded.getvalue(), uploaded.name
+
+    with paste_tab:
+        st.caption("Uma estrutura por linha")
+        text = st.text_area(
+            "Estruturas", height=150, label_visibility="collapsed",
+            placeholder="CC(=O)O[Na]\nN[C@@H](C)C(=O)O.Cl\nCC(=O)Oc1ccccc1C(=O)O",
+        )
+        if text.strip():
+            raw, name = text.encode("utf-8"), "estruturas coladas"
+
+    return raw, name
+
+
+def render_input_summary(raw: bytes, name: str) -> None:
+    preview = preview_input(raw.decode("utf-8", errors="replace"))
+    valid = preview.total - preview.n_invalid
+
+    st.markdown(f"**{name}** — {preview.total:,} estruturas encontradas".replace(",", "."))
+    st.markdown(f"✓ {valid:,} com sintaxe válida".replace(",", "."))
+    if preview.n_invalid:
+        st.markdown(f"! {preview.n_invalid} precisam de atenção")
+        st.caption(
+            "Esta é apenas uma triagem de sintaxe. Ela não substitui a validação do "
+            "pipeline: uma estrutura aprovada aqui ainda pode ser rejeitada depois."
+        )
+
+    with st.expander("Ver dados de entrada"):
+        st.dataframe(
+            [{"Identificador": i, "Estrutura": s} for i, s in preview.head],
+            use_container_width=True, hide_index=True,
+        )
+        if preview.invalid:
+            st.markdown("**Estruturas que precisam de atenção**")
+            st.dataframe(
+                [{"Identificador": i, "Estrutura": s} for i, s in preview.invalid],
+                use_container_width=True, hide_index=True,
+            )
+
+
+# --- Nível 1: configuração ------------------------------------------------------------
+
+
+def render_configuration() -> dict:
+    st.markdown("### 2. Configuração da execução")
+    first, second, third = st.columns(3)
+
+    max_mw = first.number_input(
         "Peso molecular máximo (Da)", 50.0, 10000.0,
         float(EligibilityCriteria.max_molecular_weight), step=50.0,
+        help=HELP["max_mw"],
     )
-    max_ha = st.sidebar.number_input(
+    max_ha = second.number_input(
         "Átomos pesados máximos", 5, 1000,
-        int(EligibilityCriteria.max_heavy_atoms), step=5,
+        int(EligibilityCriteria.max_heavy_atoms), step=5, help=HELP["max_ha"],
     )
-    deduplicate = st.sidebar.checkbox(
-        "Deduplicar por InChIKey", value=True,
-        help="Identidade é o InChIKey completo; o bloco1 apenas agrupa (D-07).",
-    )
-    decisions = st.sidebar.text_input(
-        "Arquivo de política (ADRs)", str(DEFAULT_DECISIONS)
+    third.markdown("<div style='height:1.75rem'></div>", unsafe_allow_html=True)
+    deduplicate = third.checkbox(
+        "Deduplicar estruturas", value=True, help=HELP["dedup"]
     )
 
-    path = Path(decisions)
-    if path.is_file():
-        policy_hash = compute_policy_hash(path)
-        st.sidebar.success(f"policy_hash `{policy_hash[:16]}…`")
-    else:
-        policy_hash = "UNVERSIONED_POLICY"
-        st.sidebar.warning(
-            "Política não encontrada. O lote será marcado como não versionado e "
-            "não será comparável a lotes versionados."
+    with st.expander("Configuração avançada"):
+        decisions = st.text_input(
+            "Arquivo de política de curadoria", str(DEFAULT_DECISIONS),
+            help=HELP["policy"],
         )
+        path = Path(decisions)
+        if path.is_file():
+            policy_hash = compute_policy_hash(path)
+            st.markdown(f"**Política utilizada**  \n`{decisions}`  \nVersão: identificada ✓")
+            with st.expander("Detalhes"):
+                st.code(f"policy_hash: {policy_hash}", language="text")
+        else:
+            policy_hash = "UNVERSIONED_POLICY"
+            st.warning(
+                "Arquivo de política não encontrado. A execução será marcada como "
+                "não versionada e não poderá ser comparada a execuções versionadas."
+            )
 
     return {
         "max_mw": max_mw,
-        "max_ha": max_ha,
+        "max_ha": int(max_ha),
         "deduplicate": deduplicate,
         "policy_hash": policy_hash,
         "policy_path": decisions,
     }
 
 
-# --- Entrada ---------------------------------------------------------------------
+# --- Nível 1: pipeline ------------------------------------------------------------------
 
 
-def input_area() -> tuple[Optional[bytes], str]:
-    upload_tab, paste_tab = st.tabs(["Upload de arquivo", "Colar SMILES"])
-
-    with upload_tab:
-        uploaded = st.file_uploader(
-            "CSV, TSV ou SMI", type=["csv", "tsv", "smi", "smiles", "txt"]
-        )
-        if uploaded is not None:
-            return uploaded.getvalue(), uploaded.name
-
-    with paste_tab:
-        text = st.text_area(
-            "Uma estrutura por linha", height=170,
-            placeholder="CC(=O)O[Na]\nN[C@@H](C)C(=O)O.Cl\nCC(=O)Oc1ccccc1C(=O)O",
-        )
-        if text.strip():
-            return text.encode("utf-8"), "colado.smi"
-
-    return None, ""
+def all_stages(report: RunReport) -> list[StageReport]:
+    return list(report.stages) + ([report.dedup] if report.dedup else [])
 
 
-def render_preview(raw: bytes, name: str) -> None:
-    preview = preview_input(raw.decode("utf-8", errors="replace"))
-
-    left, middle, right = st.columns(3)
-    left.metric("Registros", preview.total)
-    middle.metric("Inválidos (sintaxe)", preview.n_invalid)
-    right.metric("Fonte", name)
-
-    st.caption(f"Coluna de estrutura: {preview.smiles_column}")
-    if preview.head:
-        st.dataframe(
-            [{"input_id": i, "raw_smiles": s} for i, s in preview.head],
-            use_container_width=True, hide_index=True,
-        )
-    if preview.invalid:
-        with st.expander(f"{preview.n_invalid} inválidos na triagem preliminar"):
-            st.caption(
-                "Triagem apenas sintática. Não substitui a validação do pipeline: "
-                "uma estrutura aprovada aqui ainda pode ser rejeitada por valência."
-            )
-            st.dataframe(
-                [{"input_id": i, "raw_smiles": s} for i, s in preview.invalid],
-                use_container_width=True, hide_index=True,
-            )
+def stage_box(stage: StageReport) -> str:
+    mark, _, color = STATUS_LABELS[stage.status]
+    removed = (
+        f"<div class='stage-out'>−{stage.n_excluded}</div>"
+        if stage.has_exclusions else "<div class='stage-out'>&nbsp;</div>"
+    )
+    duration = (
+        f"<div class='stage-ms'>{stage.duration_seconds * 1000:.0f} ms</div>"
+        if stage.duration_seconds else "<div class='stage-ms'>&nbsp;</div>"
+    )
+    return (
+        f"<div class='stage-box'>"
+        f"<div class='stage-mark' style='color:{color}'>{mark}</div>"
+        f"<div class='stage-label'>{label_stage(stage.name)}</div>"
+        f"<div class='stage-n'>{stage.n_output}</div>"
+        f"{removed}{duration}</div>"
+    )
 
 
-# --- Pipeline --------------------------------------------------------------------
-
-
-def render_funnel(report: RunReport) -> str:
-    stages = list(report.stages) + ([report.dedup] if report.dedup else [])
+def render_pipeline(report: RunReport) -> str:
+    stages = all_stages(report)
     columns = st.columns(len(stages) * 2 - 1)
-
     for position, stage in enumerate(stages):
         with columns[position * 2]:
-            st.markdown(stage_card(stage), unsafe_allow_html=True)
+            st.markdown(stage_box(stage), unsafe_allow_html=True)
         if position < len(stages) - 1:
             columns[position * 2 + 1].markdown(
-                "<div style='text-align:center;padding-top:2.4rem;opacity:.4'>→</div>",
-                unsafe_allow_html=True,
+                "<div class='arrow'>→</div>", unsafe_allow_html=True
             )
 
+    st.caption("Clique em uma etapa para entender o que aconteceu")
     return st.radio(
-        "Etapa em detalhe",
-        [stage.name for stage in stages],
-        horizontal=True,
-        label_visibility="collapsed",
+        "Etapa", [stage.name for stage in stages],
+        format_func=label_stage, horizontal=True, label_visibility="collapsed",
     )
+
+
+# --- Nível 1: o que aconteceu -------------------------------------------------------------
+
+
+def render_summary(report: RunReport) -> None:
+    kpis = report.kpis()
+    st.markdown("### O que aconteceu?")
+
+    lines = [
+        f"**{kpis['Total Processed']:,} estruturas foram processadas.**".replace(",", "."),
+        f"✓ {kpis['Approved']:,} aprovadas".replace(",", "."),
+    ]
+    if kpis["Rejected"]:
+        lines.append(f"! {kpis['Rejected']:,} rejeitadas".replace(",", "."))
+    if kpis["Duplicates"]:
+        lines.append(f"! {kpis['Duplicates']:,} duplicatas".replace(",", "."))
+    if kpis["Warnings"]:
+        lines.append(
+            f"· {kpis['Warnings']:,} tiveram a estrutura alterada pela curadoria".replace(",", ".")
+        )
+    st.markdown("  \n".join(lines))
+
+    largest = report.largest_reduction()
+    if largest is not None:
+        st.caption(
+            f"A maior redução ocorreu em **{label_stage(largest.name)}** "
+            f"({largest.n_excluded} estruturas)."
+        )
+
+
+# --- Nível 2: detalhe da etapa ----------------------------------------------------------
 
 
 def render_stage_detail(report: RunReport, name: str) -> None:
-    stages = {s.name: s for s in list(report.stages) + ([report.dedup] if report.dedup else [])}
-    stage = stages[name]
-    mark, color = STATUS_STYLE[stage.status]
+    stage = next(s for s in all_stages(report) if s.name == name)
+    mark, status_text, color = STATUS_LABELS[stage.status]
 
     st.markdown(
-        f"#### {name.replace('_', ' ')} "
-        f"<span style='color:{color}'>{mark} {stage.status.value}</span>",
+        f"#### {label_stage(name)} "
+        f"<span style='color:{color};font-size:.9rem'>{mark} {status_text}</span>",
         unsafe_allow_html=True,
     )
-    st.caption(stage.description)
+    st.markdown(f"*{STAGE_HELP.get(name, stage.description)}*")
 
-    summary, records_tab, parameters_tab, exclusions_tab, provenance_tab = st.tabs(
-        ["Summary", "Registros", "Parameters", "Exclusões", "Provenance"]
+    a, b, c, d = st.columns(4)
+    a.metric("Entrada", stage.n_input)
+    b.metric("Resultado", stage.n_output)
+    c.metric("Removidas", stage.n_excluded)
+    d.metric(
+        "Tempo",
+        f"{stage.duration_seconds * 1000:.0f} ms" if stage.duration_seconds else "—",
     )
 
-    with summary:
-        a, b, c, d = st.columns(4)
-        a.metric("Entrada", stage.n_input)
-        b.metric("Saída", stage.n_output)
-        c.metric("Excluídos", stage.n_excluded)
-        d.metric(
-            "Duração",
-            f"{stage.duration_seconds * 1000:.0f} ms" if stage.duration_seconds else "—",
+    if name == DEDUP_STAGE:
+        st.info(
+            "Estruturas aparentadas — que compartilham o começo do InChIKey — não "
+            "são contadas como duplicatas. Enantiômeros são compostos distintos."
         )
-        if stage.name == DEDUP_STAGE:
-            st.info(
-                "Colisões de bloco1 **não** são duplicatas: enantiômeros "
-                "compartilham o primeiro bloco do InChIKey (D-07)."
-            )
 
-    with records_tab:
-        affected = [
-            record for record in report.records
-            if not record.passed
-            and record.rejection_stage
-            and record.rejection_stage.value == name
-        ]
-        if affected:
+    removed = [
+        record for record in report.records
+        if not record.passed and record.rejection_stage
+        and record.rejection_stage.value == name
+    ]
+    if removed:
+        with st.expander(f"Ver as {len(removed)} estruturas removidas nesta etapa"):
             st.dataframe(
-                [record_row(r, ("input_id", "raw_smiles", "rejection_code", "rejection_detail")) for r in affected],
+                [
+                    {
+                        "Identificador": r.input_id,
+                        "Estrutura": r.raw_smiles,
+                        "Motivo": label_reason(
+                            r.rejection_code.value if r.rejection_code else "UNKNOWN"
+                        ),
+                        "Detalhe": r.rejection_detail or "",
+                    }
+                    for r in removed
+                ],
                 use_container_width=True, hide_index=True,
             )
-        else:
-            st.caption("Nenhum registro foi rejeitado nesta etapa.")
 
-    with parameters_tab:
+    with st.expander("Parâmetros usados nesta execução"):
         st.json(report.provenance.parameters)
 
-    with exclusions_tab:
-        groups = [g for g in report.exclusion_groups() if g.stage == name]
-        if not groups:
-            st.caption("Nenhuma exclusão nesta etapa.")
-        for group in groups:
-            with st.expander(f"{group.count}  {group.reason}"):
-                st.dataframe(
-                    [record_row(r, ("input_id", "raw_smiles", "rejection_detail"))
-                     for r in report.records_by_id(group.record_ids)],
-                    use_container_width=True, hide_index=True,
-                )
 
-    with provenance_tab:
-        st.json(
-            {
-                "rdkit": report.provenance.versions.get("rdkit"),
-                "chembl_structure_pipeline": report.provenance.versions.get(
-                    "chembl_structure_pipeline"
-                ),
-                "policy_hash": report.provenance.policy_hash,
-                "pipeline_version": report.provenance.pipeline_version,
-            }
-        )
+# --- Nível 2: exclusões --------------------------------------------------------------------
 
 
 def render_exclusions(report: RunReport) -> None:
     groups = report.exclusion_groups()
     if not groups:
-        st.success("Nenhuma estrutura foi excluída.")
+        st.success("Nenhuma estrutura foi removida.")
         return
 
     total = sum(group.count for group in groups)
-    st.markdown(f"**{total} excluídas** — nenhuma desaparece sem registro.")
+    st.markdown(f"**{total} estruturas removidas.** Nenhuma desaparece sem registro.")
     st.dataframe(
-        [{"motivo": g.reason, "etapa": g.stage, "n": g.count} for g in groups],
-        use_container_width=True, hide_index=True,
-    )
-    chosen = st.selectbox(
-        "Abrir registros de uma categoria",
-        [f"{g.reason} @ {g.stage} ({g.count})" for g in groups],
-    )
-    group = groups[[f"{g.reason} @ {g.stage} ({g.count})" for g in groups].index(chosen)]
-    st.dataframe(
-        [record_row(r, ("input_id", "raw_smiles", "rejection_stage", "rejection_detail"))
-         for r in report.records_by_id(group.record_ids)],
+        [
+            {
+                "Motivo": label_reason(group.reason),
+                "Etapa": label_stage(group.stage),
+                "Quantidade": group.count,
+            }
+            for group in groups
+        ],
         use_container_width=True, hide_index=True,
     )
 
+    options = [f"{label_reason(g.reason)} — {g.count}" for g in groups]
+    chosen = st.selectbox("Abrir um motivo", options)
+    group = groups[options.index(chosen)]
+    affected = report.records_by_id(group.record_ids)
 
-# --- Rastreabilidade e diff ---------------------------------------------------------
+    st.dataframe(
+        [
+            {
+                "Identificador": r.input_id,
+                "Estrutura": r.raw_smiles,
+                "Detalhe": r.rejection_detail or "",
+            }
+            for r in affected
+        ],
+        use_container_width=True, hide_index=True,
+    )
+    st.download_button(
+        "Baixar estas estruturas (CSV)",
+        to_csv(affected, ("input_id", "raw_smiles", "rejection_code", "rejection_detail")),
+        file_name=f"removidas_{group.reason.lower()}.csv", mime="text/csv",
+    )
 
 
-def draw(smiles: str, size: int = 260):
+# --- Nível 2: rastrear uma estrutura ----------------------------------------------------------
+
+
+def draw(smiles: str, size: int = 240):
     """Imagem 2D da estrutura, ou ``None`` quando não é possível renderizar."""
     if not smiles or not DRAWING_AVAILABLE:
         return None
@@ -358,12 +557,15 @@ def draw(smiles: str, size: int = 260):
         return None
 
 
-def render_lineage(report: RunReport) -> None:
+def render_trace(report: RunReport) -> None:
+    st.caption(
+        "Veja como uma estrutura mudou durante o processamento e em qual etapa cada "
+        "decisão foi tomada."
+    )
     if not DRAWING_AVAILABLE:
-        st.warning(
-            "Renderização de estruturas indisponível neste ambiente: "
-            f"`{DRAWING_ERROR}`. Os SMILES e a trajetória continuam abaixo — "
-            "faltam apenas as imagens."
+        st.info(
+            "Este ambiente não consegue desenhar estruturas "
+            f"(`{DRAWING_ERROR}`). Os textos e a trajetória continuam disponíveis."
         )
 
     identifiers = [record.input_id for record in report.records]
@@ -374,53 +576,153 @@ def render_lineage(report: RunReport) -> None:
 
     original, curated = st.columns(2)
     with original:
-        st.caption("Original")
+        st.markdown("**Estrutura original**")
         image = draw(record.raw_smiles)
         if image is not None:
             st.image(image)
         st.code(record.raw_smiles, language="text")
     with curated:
-        st.caption("Curada" if record.passed else "Rejeitada")
+        st.markdown("**Estrutura final**" if record.passed else "**Rejeitada**")
         image = draw(record.curated_smiles or "")
         if image is not None:
             st.image(image)
         st.code(record.curated_smiles or "—", language="text")
 
     if not record.passed:
+        code = record.rejection_code.value if record.rejection_code else "UNKNOWN"
+        stage = record.rejection_stage.value if record.rejection_stage else ""
         st.error(
-            f"**{record.rejection_code.value}** em `{record.rejection_stage.value}` — "
+            f"**{label_reason(code)}** em *{label_stage(stage)}* — "
             f"{record.rejection_detail}"
         )
 
     steps = structure_lineage(record)
+    st.markdown("**Trajetória**")
     if steps:
-        st.markdown("**Trajetória observada**")
         for step in steps:
             st.markdown(
-                f"`{step.stage}` · **{step.rule}** — {step.detail}  \n"
+                f"↓ **{label_stage(step.stage)}** — {step.detail}  \n"
                 f"<span class='mono'>{step.before_smiles} → {step.after_smiles}</span>",
                 unsafe_allow_html=True,
             )
     else:
         st.caption(
-            "Nenhuma transformação observada. O motor é uma caixa-preta de oito "
-            "operações internas: etapas sem efeito detectado pelas sondas não "
-            "produzem passos de linhagem, e a interface não os inventa."
+            "A camada de engenharia não registrou transformações intermediárias "
+            "para esta estrutura."
         )
 
     if record.removed_fragments:
         st.markdown(f"**Fragmentos removidos:** `{record.removed_fragments}`")
-        image = draw(record.removed_fragments, size=180)
-        if image is not None:
-            st.image(image)
-
     if record.inchikey:
-        st.markdown(
-            f"**InChIKey** `{record.inchikey}` · bloco1 `{record.inchikey_block1}`"
+        st.markdown(f"**InChIKey:** `{record.inchikey}`", help=HELP["inchikey"])
+
+
+# --- Nível 2: resultados ---------------------------------------------------------------------
+
+
+def render_results(report: RunReport) -> None:
+    scope = st.radio(
+        "Filtro", ["Todos", "Aprovados", "Rejeitados", "Transformados"],
+        horizontal=True, label_visibility="collapsed",
+    )
+    selected = {
+        "Todos": report.records,
+        "Aprovados": report.approved,
+        "Rejeitados": report.rejected,
+        "Transformados": [r for r in report.approved if r.transformations],
+    }[scope]
+
+    query = st.text_input(
+        "Pesquisar estrutura, identificador ou InChIKey", "",
+        label_visibility="collapsed",
+        placeholder="Pesquisar estrutura, identificador ou InChIKey",
+    )
+    if query:
+        needle = query.lower()
+        selected = [
+            record for record in selected
+            if needle in record.input_id.lower()
+            or needle in record.raw_smiles.lower()
+            or needle in (record.curated_smiles or "").lower()
+            or needle in (record.inchikey or "").lower()
+        ]
+
+    st.caption(f"{len(selected)} estruturas")
+    st.dataframe(
+        [
+            {
+                "Identificador": r.input_id,
+                "Original": r.raw_smiles,
+                "Curada": r.curated_smiles or "",
+                "InChIKey": r.inchikey or "",
+                "Status": "Aprovada" if r.passed else "Rejeitada",
+                "Motivo": label_reason(r.rejection_code.value)
+                if r.rejection_code else "",
+            }
+            for r in selected
+        ],
+        use_container_width=True, hide_index=True,
+    )
+
+
+# --- Nível 2: exportação -------------------------------------------------------------------------
+
+
+def render_downloads(report: RunReport) -> None:
+    st.caption(
+        "Escolha entre baixar tudo ou selecionar somente as informações necessárias."
+    )
+
+    st.markdown("**📦 Todos os dados**")
+    st.caption("Inclui estruturas aprovadas, rejeitadas, status e motivos.")
+    st.download_button(
+        "Baixar CSV completo", full_csv(report),
+        file_name="structures_full.csv", mime="text/csv",
+    )
+
+    st.divider()
+    st.markdown("**Seleção personalizada**")
+    labels = {label: column for column, label in EXPORT_LABELS}
+    chosen = st.multiselect(
+        "Colunas", list(labels),
+        [label for column, label in EXPORT_LABELS if column in DEFAULT_EXPORT],
+        label_visibility="collapsed",
+    )
+    if chosen:
+        st.download_button(
+            "Baixar CSV selecionado",
+            to_csv(report.records, [labels[label] for label in chosen]),
+            file_name="structures_custom.csv", mime="text/csv",
+        )
+
+    st.divider()
+    st.markdown("**Estruturas rejeitadas**")
+    st.download_button(
+        "Baixar rejeitadas", rejected_csv(report),
+        file_name="rejected_structures.csv", mime="text/csv",
+    )
+
+    st.divider()
+    st.markdown("**Reprodutibilidade**")
+    manifest = run_manifest(report)
+    first, second = st.columns(2)
+    with first:
+        st.caption("📋 Manifesto da execução", help=HELP["manifest"])
+        st.download_button(
+            "Baixar manifest.json",
+            json.dumps(manifest, indent=2, ensure_ascii=False),
+            file_name="run_manifest.json", mime="application/json",
+        )
+    with second:
+        st.caption("📦 Pacote completo — dados, manifesto e instruções")
+        st.download_button(
+            "Baixar pacote de reprodução", reproducibility_package(report),
+            file_name=f"structure-curation-run-{report.provenance.run_id}.zip",
+            mime="application/zip",
         )
 
 
-# --- Proveniência e exportação --------------------------------------------------------
+# --- Nível 3: proveniência ----------------------------------------------------------------------------
 
 
 def render_provenance(report: RunReport) -> None:
@@ -428,15 +730,24 @@ def render_provenance(report: RunReport) -> None:
     blockers = provenance.reproduction_blockers()
 
     if blockers:
-        st.warning(
-            "**Esta execução não é exatamente reproduzível.**\n\n"
-            + "\n".join(f"- {item}" for item in blockers)
-        )
+        st.markdown("**! Reprodução exata não garantida**")
+        st.markdown("\n".join(f"- {item}" for item in blockers))
     else:
-        st.success("Execução reproduzível a partir dos metadados registrados.")
+        st.markdown("**✓ Esta execução pode ser reproduzida**")
 
-    left, right = st.columns(2)
-    with left:
+    a, b, c, d = st.columns(4)
+    a.metric("Pipeline", provenance.pipeline_version)
+    b.metric("Git commit", provenance.git.commit[:7])
+    c.metric(
+        "Política",
+        "versionada" if provenance.policy_hash != "UNVERSIONED_POLICY" else "ausente",
+    )
+    d.metric("RDKit", provenance.versions.get("rdkit", "—"))
+
+    st.markdown("**Comando de reprodução**")
+    st.code(provenance.reproduction_command(provenance.input_name), language="bash")
+
+    with st.expander("Ver detalhes técnicos"):
         st.markdown("**Execução**")
         st.json(
             {
@@ -449,7 +760,6 @@ def render_provenance(report: RunReport) -> None:
                 "output_sha256": provenance.output_hash,
             }
         )
-    with right:
         st.markdown("**Código e política**")
         st.json(
             {
@@ -461,180 +771,116 @@ def render_provenance(report: RunReport) -> None:
                 "policy_path": provenance.policy_path,
             }
         )
-
-    st.markdown("**Versões e ambiente**")
-    st.json({**provenance.versions, **provenance.environment})
-
-    st.markdown("**Reproduce this run**")
-    st.code(provenance.reproduction_command(provenance.input_name), language="bash")
-    st.caption(
-        "Mudanças de versão do RDKit alteram percepção de aromaticidade e regras de "
-        "padronização: dois lotes com RDKit diferente não são comparáveis mesmo com "
-        "o mesmo policy_hash."
-    )
-
-
-def render_exports(report: RunReport) -> None:
-    run_id = report.provenance.run_id
-    complete, custom, rejected_tab, manifest_tab, package_tab = st.tabs(
-        ["Completo", "Personalizado", "Rejeitados", "Manifesto", "Pacote"]
-    )
-
-    with complete:
-        st.caption("Todos os registros, aprovados e rejeitados, com status e motivo.")
-        st.download_button(
-            "structures_full.csv", full_csv(report),
-            file_name="structures_full.csv", mime="text/csv",
-        )
-
-    with custom:
-        columns = st.multiselect(
-            "Colunas", list(EXPORTABLE_COLUMNS), list(DEFAULT_EXPORT_COLUMNS)
-        )
+        st.markdown("**Parâmetros**")
+        st.json(provenance.parameters)
+        st.markdown("**Versões e ambiente**")
+        st.json({**provenance.versions, **provenance.environment})
         st.caption(
-            "`inchi` e `molecular_formula` são calculadas sob demanda. Colunas que a "
-            "camada de engenharia não produz não aparecem nesta lista."
-        )
-        if columns:
-            st.download_button(
-                "structures_custom.csv", to_csv(report.records, columns),
-                file_name="structures_custom.csv", mime="text/csv",
-            )
-
-    with rejected_tab:
-        st.caption("Identificador, SMILES, etapa de falha, código e detalhe.")
-        st.download_button(
-            "rejected_structures.csv", rejected_csv(report),
-            file_name="rejected_structures.csv", mime="text/csv",
-        )
-
-    with manifest_tab:
-        manifest = run_manifest(report)
-        st.json(manifest, expanded=False)
-        st.download_button(
-            "run_manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False),
-            file_name="run_manifest.json", mime="application/json",
-        )
-
-    with package_tab:
-        st.caption(
-            "CSV completo, rejeitados, manifesto, parâmetros e um README explicando "
-            "como interpretar e reproduzir."
-        )
-        st.download_button(
-            f"structure-curation-run-{run_id}.zip",
-            reproducibility_package(report),
-            file_name=f"structure-curation-run-{run_id}.zip",
-            mime="application/zip",
+            "Mudanças de versão do RDKit alteram percepção de aromaticidade e regras "
+            "de padronização: duas execuções com RDKit diferente não são comparáveis "
+            "mesmo com a mesma política."
         )
 
 
-def render_results_table(report: RunReport) -> None:
-    scope = st.radio(
-        "Escopo", ["Todos", "Aprovados", "Rejeitados", "Com transformações"],
-        horizontal=True, label_visibility="collapsed",
-    )
-    selected = {
-        "Todos": report.records,
-        "Aprovados": report.approved,
-        "Rejeitados": report.rejected,
-        "Com transformações": [r for r in report.approved if r.transformations],
-    }[scope]
+# --- Aplicação --------------------------------------------------------------------------------------------
 
-    query = st.text_input("Buscar (id, SMILES ou InChIKey)", "")
-    if query:
-        needle = query.lower()
-        selected = [
-            record for record in selected
-            if needle in record.input_id.lower()
-            or needle in record.raw_smiles.lower()
-            or needle in (record.curated_smiles or "").lower()
-            or needle in (record.inchikey or "").lower()
-        ]
 
-    st.caption(f"{len(selected)} registros")
-    st.dataframe(
-        [record_row(record, (
-            "input_id", "raw_smiles", "curated_smiles", "inchikey", "status",
-            "rejection_code", "removed_fragments", "parent_mw", "n_components_parent",
-        )) for record in selected],
-        use_container_width=True, hide_index=True,
+def execute(raw: bytes, name: str, configuration: dict) -> RunReport:
+    pipeline = CurationPipeline(
+        policy_hash=configuration["policy_hash"],
+        criteria=EligibilityCriteria(
+            max_molecular_weight=configuration["max_mw"],
+            max_heavy_atoms=configuration["max_ha"],
+        ),
+        deduplicate=configuration["deduplicate"],
     )
 
+    placeholder = st.empty()
+    bar = st.progress(0.0)
 
-# --- Aplicação -----------------------------------------------------------------------
+    def report_progress(position: int, total: int, _identifier: str) -> None:
+        # Progresso real: posição do registro no lote, informada pelo pipeline.
+        # Não há percentual por etapa porque a engenharia não fornece um.
+        placeholder.markdown(f"Processando estrutura {position} de {total}…")
+        bar.progress(position / total if total else 1.0)
+
+    report = pipeline.run_report(
+        raw.decode("utf-8", errors="replace"),
+        parameters={
+            "max_mw": configuration["max_mw"],
+            "max_ha": configuration["max_ha"],
+            "deduplicate": configuration["deduplicate"],
+        },
+        input_bytes=raw,
+        input_name=name,
+        policy_path=configuration["policy_path"],
+        progress=report_progress,
+    )
+    placeholder.empty()
+    bar.empty()
+    return report
 
 
 def main() -> None:
-    st.set_page_config(page_title="Structure Curation Pipeline", layout="wide")
+    st.set_page_config(page_title="Structure Curation", layout="wide")
     inject_styles()
 
-    parameters = sidebar()
     report: Optional[RunReport] = st.session_state.get("report")
+    render_header(report)
+    st.divider()
 
-    status = (
-        f"RUN {report.provenance.run_id} · ✓ SUCCESS" if report else "nenhuma execução"
-    )
-    st.markdown(
-        f"<div class='run-banner'><span class='run-title'>STRUCTURE CURATION "
-        f"PIPELINE</span><span class='mono'>{status}</span></div>",
-        unsafe_allow_html=True,
-    )
-
-    raw, name = input_area()
+    raw, name = render_input()
     if raw:
-        render_preview(raw, name)
-        if st.button("Executar pipeline", type="primary"):
-            pipeline = CurationPipeline(
-                policy_hash=parameters["policy_hash"],
-                criteria=EligibilityCriteria(
-                    max_molecular_weight=parameters["max_mw"],
-                    max_heavy_atoms=int(parameters["max_ha"]),
-                ),
-                deduplicate=parameters["deduplicate"],
-            )
-            with st.spinner("Executando…"):
-                st.session_state["report"] = pipeline.run_report(
-                    raw.decode("utf-8", errors="replace"),
-                    parameters={
-                        "max_mw": parameters["max_mw"],
-                        "max_ha": int(parameters["max_ha"]),
-                        "deduplicate": parameters["deduplicate"],
-                    },
-                    input_bytes=raw,
-                    input_name=name,
-                    policy_path=parameters["policy_path"],
-                )
-            st.rerun()
+        render_input_summary(raw, name)
+
+    st.divider()
+    configuration = render_configuration()
+
+    st.divider()
+    if st.button(
+        "▶ Executar curadoria", type="primary", disabled=raw is None,
+        use_container_width=False,
+    ):
+        st.session_state["report"] = execute(raw, name, configuration)
+        st.rerun()
 
     if report is None:
-        st.info("Carregue um arquivo ou cole SMILES para executar o pipeline.")
+        st.info("Carregue um arquivo ou cole estruturas para começar.")
+        render_global_help()
         return
 
     st.divider()
-    kpis = report.kpis()
-    for column, (label, value) in zip(st.columns(len(kpis)), kpis.items()):
-        column.metric(label, value)
+    st.markdown("### 3. Pipeline")
+    selected = render_pipeline(report)
+    st.divider()
+    render_stage_detail(report, selected)
 
     st.divider()
-    selected_stage = render_funnel(report)
-    st.divider()
-    render_stage_detail(report, selected_stage)
+    render_summary(report)
 
     st.divider()
-    exclusions, lineage, results, provenance_section, exports = st.tabs(
-        ["Exclusões", "Rastreabilidade", "Resultados", "Proveniência", "Exportação"]
+    exclusions, trace, results, downloads, provenance = st.tabs(
+        [
+            "O que foi removido",
+            "Rastrear uma estrutura",
+            "Resultados",
+            "Baixar resultados",
+            "Proveniência da execução",
+        ]
     )
     with exclusions:
         render_exclusions(report)
-    with lineage:
-        render_lineage(report)
+    with trace:
+        render_trace(report)
     with results:
-        render_results_table(report)
-    with provenance_section:
+        render_results(report)
+    with downloads:
+        render_downloads(report)
+    with provenance:
         render_provenance(report)
-    with exports:
-        render_exports(report)
+
+    st.divider()
+    render_global_help()
 
 
 if __name__ == "__main__":

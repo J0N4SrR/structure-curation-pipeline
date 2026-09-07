@@ -160,6 +160,19 @@ class RunReport:
         ]
         return sorted(groups, key=lambda group: (-group.count, group.reason))
 
+    def largest_reduction(self) -> Optional[StageReport]:
+        """Etapa que mais removeu estruturas, ou ``None`` se nenhuma removeu.
+
+        Existe aqui, e não na interface, porque é uma leitura dos dados do lote —
+        a UI apresenta a frase, não a deriva.
+        """
+        candidates = [
+            stage
+            for stage in list(self.stages) + ([self.dedup] if self.dedup else [])
+            if stage.n_excluded > 0
+        ]
+        return max(candidates, key=lambda stage: stage.n_excluded, default=None)
+
     def records_by_id(self, identifiers: Iterable[str]) -> list[CurationRecord]:
         wanted = set(identifiers)
         return [record for record in self.records if record.input_id in wanted]
