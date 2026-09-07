@@ -17,6 +17,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Iterator, Optional, Sequence, Union
 
+import time
+
 from curation.dedup import DedupIndex
 from curation.engine import PIPELINE_VERSION, EngineWrapper
 from curation.filters import EligibilityCriteria
@@ -184,6 +186,61 @@ class CurationPipeline:
                 out_dir=out_path,
             )
         return summary
+
+    def run_report(
+        self,
+        source: Source,
+        parameters: Optional[dict] = None,
+        input_bytes: Optional[bytes] = None,
+        input_name: str = "input",
+        policy_path: str = "docs/decisions.md",
+    ):
+        """Executa um lote em memória e devolve um :class:`RunReport` completo.
+
+        Diferente de :meth:`run`, não escreve em disco: serve a clientes interativos
+        que precisam do relatório, da proveniência e dos artefatos de exportação sem
+        materializar um diretório de saída.
+        """
+        from curation.provenance import RunProvenance
+        from curation.reporting import build_run_report, finalize
+
+        records_in = list(read_input(source))
+        raw = input_bytes if input_bytes is not None else b""
+        provenance = RunProvenance.start(
+            policy_hash=self.policy_hash,
+            parameters=parameters or self.default_parameters(),
+            input_bytes=raw,
+            input_name=input_name,
+            policy_path=policy_path,
+        )
+
+        self._engine.reset_timings()
+        index = DedupIndex() if self.deduplicate else None
+        started = time.perf_counter()
+        records = []
+        for input_id, raw_smiles in records_in:
+            record = self.process_single(raw_smiles, input_id)
+            records.append(record)
+            if index is not None:
+                index.add(record)
+        elapsed = time.perf_counter() - started
+
+        report = build_run_report(
+            records,
+            provenance,
+            stage_seconds=dict(self._engine.stage_seconds),
+            index=index,
+        )
+        return finalize(report, elapsed)
+
+    def default_parameters(self) -> dict:
+        """Parâmetros efetivos desta instância, para registro no manifesto."""
+        return {
+            "max_mw": self.criteria.max_molecular_weight,
+            "max_ha": self.criteria.max_heavy_atoms,
+            "deduplicate": self.deduplicate,
+            "pipeline_version": self.pipeline_version,
+        }
 
     @staticmethod
     def summarize(records: Sequence[CurationRecord]) -> BatchSummary:

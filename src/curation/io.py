@@ -22,6 +22,7 @@ import hashlib
 import json
 import os
 import sys
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Generator, Iterable, Iterator, Optional, Sequence, TextIO, Union
@@ -589,6 +590,41 @@ class BatchWriter:
             pass
         finally:
             os.close(fd)
+
+
+@dataclass(frozen=True)
+class InputPreview:
+    """Resumo da fonte de entrada, antes de qualquer curadoria.
+
+    A validação aqui é **estritamente sintática** e não substitui a validação do
+    pipeline: uma estrutura que passa neste filtro ainda pode ser rejeitada por
+    valência, e uma que falha aqui é sintaticamente inválida sob qualquer critério.
+    """
+
+    total: int
+    smiles_column: str
+    head: list[tuple[str, str]]
+    invalid: list[tuple[str, str]]
+
+    @property
+    def n_invalid(self) -> int:
+        return len(self.invalid)
+
+
+def preview_input(source: Source, head: int = 5) -> InputPreview:
+    """Lê a fonte e resume o que o pipeline vai receber."""
+    rows = list(read_input(source))
+    invalid = [
+        (identifier, smiles)
+        for identifier, smiles in rows
+        if not _parses_as_smiles(smiles)
+    ]
+    return InputPreview(
+        total=len(rows),
+        smiles_column="detectada por parseabilidade (não por posição)",
+        head=rows[:head],
+        invalid=invalid,
+    )
 
 
 def read_manifest(out_dir: Union[str, Path]) -> Optional[dict]:

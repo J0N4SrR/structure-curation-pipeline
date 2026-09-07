@@ -13,6 +13,8 @@ ela emerge de ``standardize_mol``, que sanitiza ao final.
 from __future__ import annotations
 
 import re
+import time
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Callable, Optional, Sequence
 
@@ -141,6 +143,23 @@ class EngineWrapper:
         self._pipeline_version = pipeline_version
         self._rdkit_version = rdkit.__version__
         self._csp_version = getattr(csp, "__version__", "unknown")
+        self.stage_seconds: dict[str, float] = defaultdict(float)
+
+    def reset_timings(self) -> None:
+        """Zera os acumuladores de tempo. Chamado no inicio de cada lote."""
+        self.stage_seconds = defaultdict(float)
+
+    def _timed(self, stage: Stage, action):
+        """Executa ``action`` medindo o tempo real gasto no estagio.
+
+        Os tempos sao acumulados por estagio ao longo do lote. Nao ha estimativa:
+        o que a interface exibe e tempo de parede medido.
+        """
+        started = time.perf_counter()
+        try:
+            return action()
+        finally:
+            self.stage_seconds[stage.value] += time.perf_counter() - started
 
     # --- API pública -------------------------------------------------------------
 
@@ -153,19 +172,23 @@ class EngineWrapper:
         """
         events: list[TransformationEvent] = []
 
-        parsed = self._parse(raw_smiles)
+        parsed = self._timed(Stage.PARSE, lambda: self._parse(raw_smiles))
         if isinstance(parsed, _Failure):
             return self._rejected(input_id, raw_smiles, parsed, events)
         original = parsed
 
-        standardized = self._standardize(original)
+        standardized = self._timed(
+            Stage.STANDARDIZE, lambda: self._standardize(original)
+        )
         if isinstance(standardized, _Failure):
             return self._rejected(input_id, raw_smiles, standardized, events)
         events.extend(
             run_probes(self._probes, original, standardized, Stage.STANDARDIZE)
         )
 
-        parent_result = self._get_parent(standardized)
+        parent_result = self._timed(
+            Stage.GET_PARENT, lambda: self._get_parent(standardized)
+        )
         if isinstance(parent_result, _Failure):
             return self._rejected(input_id, raw_smiles, parent_result, events)
         parent, excluded = parent_result
@@ -203,11 +226,16 @@ class EngineWrapper:
             except Exception:
                 pass
 
-        gate_failure = self._valence_gate(parent, excluded)
+        gate_failure = self._timed(
+            Stage.VALENCE_GATE, lambda: self._valence_gate(parent, excluded)
+        )
         if gate_failure is not None:
             return self._rejected(input_id, raw_smiles, gate_failure, events)
 
-        verdict = evaluate(parent, self._criteria, count_fragments(parent))
+        verdict = self._timed(
+            Stage.ELIGIBILITY,
+            lambda: evaluate(parent, self._criteria, count_fragments(parent)),
+        )
         if not verdict.eligible:
             return self._rejected(
                 input_id,
@@ -221,7 +249,9 @@ class EngineWrapper:
                 verdict=verdict,
             )
 
-        identity = self._canonicalize(parent)
+        identity = self._timed(
+            Stage.CANONICALIZE, lambda: self._canonicalize(parent)
+        )
         if isinstance(identity, _Failure):
             return self._rejected(input_id, raw_smiles, identity, events)
         curated_smiles, inchikey = identity

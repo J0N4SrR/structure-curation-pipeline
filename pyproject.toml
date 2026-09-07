@@ -18,6 +18,8 @@ curation = "curation.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=7.4"]
+app = ["streamlit>=1.30", "pandas>=2.0", "pillow>=10.0"]
+validation = ["matplotlib>=3.6"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
