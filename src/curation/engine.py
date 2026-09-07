@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Optional, Sequence
+from typing import Callable, Optional, Sequence
 
 import rdkit
 from rdkit import Chem
@@ -41,6 +41,12 @@ from curation.probes import (
 )
 
 PIPELINE_VERSION = "0.1.0"
+
+#: Assinatura de um padronizador substituível.
+StandardizeFn = Callable[[Chem.Mol], Chem.Mol]
+
+#: Transformação opcional aplicada à estrutura-mãe, depois de ``get_parent_mol``.
+ParentTransform = Callable[[Chem.Mol], Chem.Mol]
 
 _FORMULA_TOKEN = re.compile(r"([A-Z][a-z]?)(\d*)")
 
@@ -122,10 +128,16 @@ class EngineWrapper:
         probes: Sequence[Probe] = DEFAULT_PROBES,
         pipeline_version: str = PIPELINE_VERSION,
         criteria: Optional[EligibilityCriteria] = None,
+        standardize_fn: Optional[StandardizeFn] = None,
+        parent_transform: Optional[ParentTransform] = None,
+        discard_excluded: bool = False,
     ) -> None:
         self._policy_hash = policy_hash
         self._probes = tuple(probes)
         self._criteria = criteria or EligibilityCriteria()
+        self._standardize_fn = standardize_fn or csp.standardize_mol
+        self._parent_transform = parent_transform
+        self._discard_excluded = discard_excluded
         self._pipeline_version = pipeline_version
         self._rdkit_version = rdkit.__version__
         self._csp_version = getattr(csp, "__version__", "unknown")
@@ -170,6 +182,26 @@ class EngineWrapper:
                     detail="exclude_flag ativo: motor devolveu a estrutura inalterada (D-03)",
                 ),
             )
+
+        if excluded and self._discard_excluded:
+            return self._rejected(
+                input_id,
+                raw_smiles,
+                _Failure(
+                    RejectionCode.ERR_ORGANOMETALLIC,
+                    Stage.GET_PARENT,
+                    "composto com exclude_flag descartado por politica de ablacao",
+                ),
+                events,
+            )
+
+        if self._parent_transform is not None:
+            try:
+                transformed = self._parent_transform(Chem.Mol(parent))
+                if transformed is not None and transformed.GetNumAtoms():
+                    parent = transformed
+            except Exception:
+                pass
 
         gate_failure = self._valence_gate(parent, excluded)
         if gate_failure is not None:
@@ -251,7 +283,7 @@ class EngineWrapper:
         rejeitá-la antes de tentar.
         """
         try:
-            return csp.standardize_mol(Chem.Mol(mol))
+            return self._standardize_fn(Chem.Mol(mol))
         except Exception as error:
             return _Failure(_classify(error), Stage.STANDARDIZE, str(error))
 

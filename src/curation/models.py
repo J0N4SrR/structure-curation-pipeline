@@ -48,6 +48,7 @@ class RejectionCode(str, Enum):
     ERR_INTERNAL = "ERR_INTERNAL"
     ERR_MW_LIMIT = "ERR_MW_LIMIT"
     ERR_HA_LIMIT = "ERR_HA_LIMIT"
+    ERR_ORGANOMETALLIC = "ERR_ORGANOMETALLIC"
 
 
 class TransformationEvent(BaseModel):

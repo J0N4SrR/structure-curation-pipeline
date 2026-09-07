@@ -239,6 +239,21 @@ O ganho real da coluna auxiliar é, portanto, estreito e bem definido: **tautome
 com deslocamento em carbono** (1,3-dicarbonílicos e afins), que o InChI não trata
 como tautomérica.
 
+**Segunda razão, medida na ablação:** `TautomerEnumerator` tem `RemoveSp3Stereo`
+ligado por padrão e **apaga centros quirais** que participem do sistema tautomérico:
+
+```
+N[C@@H](C)C(=O)O                 -> CC(N)C(=O)O            (quiralidade perdida)
+OC(=O)[C@H](O)[C@@H](O)C(=O)O    -> O=C(O)C(O)C(O)C(=O)O   (quiralidade perdida)
+C[C@H](O)CC(=O)C                 -> CC(=O)C[C@H](C)O       (preservada: centro isolado)
+```
+
+No corpus de ablação, a variante `canonical_tautomer` reduziu os centros quirais
+definidos de 3 para 0. Canonicalizar tautômeros como política de produção seria,
+portanto, incompatível com o objetivo declarado de preservar quiralidade — a menos
+que `SetRemoveSp3Stereo(False)` seja aplicado explicitamente, o que altera o
+resultado da canonicalização e exigiria ADR própria.
+
 ### Decisão
 
 Preservar o tautômero de entrada na estrutura curada. Adicionar coluna auxiliar
@@ -574,3 +589,4 @@ hash e, por construção, marca os lotes anteriores como produzidos sob outra po
 | Data | Alteração |
 | --- | --- |
 | 2026-09-07 | Criação do documento com D-01 a D-10 |
+| 2026-09-07 | D-04: acrescentada a evidência de perda de estereoquímica na canonicalização tautomérica, medida na ablação da Fase 5 |
