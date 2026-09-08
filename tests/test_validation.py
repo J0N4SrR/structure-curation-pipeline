@@ -225,7 +225,7 @@ def test_tartrate_variant_preserves_stereochemistry() -> None:
 def test_alternative_standardizer_matches_reference_without_tartrate() -> None:
     """A sequência recomposta só pode divergir no passo omitido.
 
-    Se a referência mudar a ordem interna, esta asserção quebra — que é o objetivo.
+    Se a referência mudar a ordem interna, esta asserção quebra - que é o objetivo.
     """
     import chembl_structure_pipeline as csp
     from rdkit import Chem
@@ -241,7 +241,7 @@ def test_alternative_standardizer_matches_reference_without_tartrate() -> None:
 
 
 def test_tautomer_canonicalization_removes_sp3_stereo() -> None:
-    """``RemoveSp3Stereo`` é True por padrão — a base empírica da D-04."""
+    """``RemoveSp3Stereo`` é True por padrão - a base empírica da D-04."""
     from rdkit import Chem
 
     canonical = canonicalize_tautomer(Chem.MolFromSmiles("N[C@@H](C)C(=O)O"))

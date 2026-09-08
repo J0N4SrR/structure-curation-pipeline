@@ -2,13 +2,13 @@
 
 A asserção é sobre **InChIKey**, nunca sobre igualdade literal de SMILES: a
 representação textual muda sem que o composto mude. ``CC(=O)O`` e ``OC(C)=O`` são
-o mesmo ácido acético, e o pipeline devolve a forma canônica do RDKit — comparar
+o mesmo ácido acético, e o pipeline devolve a forma canônica do RDKit - comparar
 strings de entrada com strings de saída falharia por motivo errado.
 
 A distinção que organiza este arquivo:
 
-* **Identidade** — o composto entra e sai sendo o mesmo. O InChIKey se conserva.
-* **Normalização** — o composto entra e sai *diferente por decisão de política*
+* **Identidade** - o composto entra e sai sendo o mesmo. O InChIKey se conserva.
+* **Normalização** - o composto entra e sai *diferente por decisão de política*
   (sal removido, carga neutralizada, tautômero preservado). Aqui o InChIKey **não**
   se conserva, e comparar contra a entrada seria o teste errado; compara-se contra
   a estrutura-mãe esperada.
@@ -95,7 +95,7 @@ def test_control_structure_matches_its_declared_formula(
     """O controle precisa ser a molécula que diz ser.
 
     Sem esta verificação, um SMILES errado rotulado com o nome de um fármaco
-    passaria em todos os testes de identidade — validando o pipeline contra a
+    passaria em todos os testes de identidade - validando o pipeline contra a
     molécula errada e sem nada acusar. Metade dos SMILES propostos originalmente
     para este conjunto falhava aqui.
     """
@@ -430,7 +430,7 @@ def test_geometric_isomers_are_not_merged(pipeline: CurationPipeline) -> None:
 
     Regressão: a estereoquímica de ligação dupla chegava ao InChIKey como
     ``STEREONONE``, então os dois saíam com a mesma chave e a deduplicação os
-    fundia como duplicata exata — a mesma falha que a D-07 evita para
+    fundia como duplicata exata - a mesma falha que a D-07 evita para
     enantiômeros, ocorrendo em ligação dupla.
     """
     from curation.dedup import CollisionType, DedupIndex

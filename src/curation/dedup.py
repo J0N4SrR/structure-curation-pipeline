@@ -1,7 +1,7 @@
 """Deduplicação estrutural com relatório explícito de conflitos (D-07).
 
 A identidade é o **InChIKey completo**. O primeiro bloco de 14 caracteres codifica
-apenas conectividade — ignora estereoquímica, isótopos e carga — e usá-lo como chave
+apenas conectividade - ignora estereoquímica, isótopos e carga - e usá-lo como chave
 funde enantiômeros::
 
     L-alanina  QNAYBMKLOCPYGJ-REOHCLBHSA-N
@@ -101,7 +101,7 @@ class DedupIndex:
 
     **Pegada de memória medida** (não estimada): ~159 bytes por entrada para o índice
     de identidade, sobre CPython 3.12. Isso é 1 milhão de compostos em ~0,16 GB e 10
-    milhões em ~1,6 GB — viável em memória até a ordem de 10⁷, ponto a partir do qual
+    milhões em ~1,6 GB - viável em memória até a ordem de 10⁷, ponto a partir do qual
     convém trocar por um índice em disco.
 
     Deduplicar exige visão global do lote: não é possível fazê-lo em streaming puro.
@@ -155,7 +155,7 @@ class DedupIndex:
             record: registro aprovado, com InChIKey preenchido.
             annotation: valor anotado associado ao composto (atividade, classe,
                 rótulo). Quando dois registros compartilham o InChIKey completo mas
-                divergem aqui, a colisão é classificada como conflito de anotação —
+                divergem aqui, a colisão é classificada como conflito de anotação -
                 a categoria que não pode ser resolvida automaticamente.
 
         Returns:
@@ -192,7 +192,7 @@ class DedupIndex:
                 detail=(
                     "mesmo esqueleto de conectividade, identidades distintas: "
                     + _classify_block1_difference(inchikey, neighbour)
-                    + " — não é duplicata"
+                    + " - não é duplicata"
                 ),
             )
             self._collisions.append(collision)
@@ -226,7 +226,7 @@ class DedupIndex:
                 inchikey_block1=block1,
                 detail=(
                     f"mesma estrutura com anotações divergentes: "
-                    f"{previous!r} vs {annotation!r} — requer decisão humana"
+                    f"{previous!r} vs {annotation!r} - requer decisão humana"
                 ),
             )
         return Collision(

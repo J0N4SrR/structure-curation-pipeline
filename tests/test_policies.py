@@ -4,7 +4,7 @@ Os dois comportamentos já existiam no código; o que faltava era a decisão
 registrada e o teste que a trava. Uma política implementada mas não documentada
 não é auditável, e uma política não travada muda sem que ninguém perceba.
 
-Inclui também testes de propriedade determinísticos — sem Hypothesis, ver a
+Inclui também testes de propriedade determinísticos - sem Hypothesis, ver a
 justificativa em ``test_canonicalisation_converges_under_atom_reordering``.
 """
 
@@ -214,7 +214,7 @@ def test_canonicalisation_converges_under_atom_reordering(
     Hypothesis não foi introduzido: um gerador genérico de strings produziria quase
     só SMILES inválidos, exercitando o caminho de erro que já está coberto, ao passo
     que ``RenumberAtoms`` gera entradas **quimicamente idênticas e sintaticamente
-    distintas** — exatamente a invariante que importa. Semente fixa, para que uma
+    distintas** - exatamente a invariante que importa. Semente fixa, para que uma
     falha seja reproduzível.
     """
     reference = pipeline.process_single(smiles, "PERM")

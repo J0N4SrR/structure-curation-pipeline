@@ -2,22 +2,22 @@
 
 Cada variante altera **uma** política de ``docs/decisions.md`` e mede o efeito a
 jusante. É a pergunta publicável do trabalho, e é diferente de "a curadoria mudou os
-descritores?" — que é aritmética, já que remover um contra-íon obviamente reduz o
+descritores?" - que é aritmética, já que remover um contra-íon obviamente reduz o
 peso molecular. O que tem conteúdo é comparar *escolhas de política entre si*, com
 tudo o mais mantido constante.
 
 Métricas por variante:
 
-(a) **Deduplicação** — quantas identidades distintas restam. Sensível a tautomeria e
+(a) **Deduplicação** - quantas identidades distintas restam. Sensível a tautomeria e
     a estereoquímica, portanto é onde D-02 e D-04 aparecem.
-(b) **Distribuição físico-química** — MW, LogP e TPSA da estrutura-mãe.
-(c) **Conservação de centros quirais** — quantos centros definidos sobrevivem.
+(b) **Distribuição físico-química** - MW, LogP e TPSA da estrutura-mãe.
+(c) **Conservação de centros quirais** - quantos centros definidos sobrevivem.
 
 Sobre a variante de tartaratos: ``flatten_tartrate_mol`` é chamada
 incondicionalmente por ``standardize_mol`` e a API pública não permite desativá-la.
 Em vez de monkeypatch, a variante **recompõe a sequência** a partir das próprias
 funções do módulo de referência, omitindo um passo. É um desvio controlado, isolado
-no harness experimental, que nunca toca o caminho de produção — que é justamente o
+no harness experimental, que nunca toca o caminho de produção - que é justamente o
 que a D-01 protege.
 """
 
@@ -52,7 +52,7 @@ def standardize_without_tartrate_flattening(mol: Chem.Mol) -> Chem.Mol:
     """``standardize_mol`` sem o passo ``flatten_tartrate_mol`` (ablação da D-02).
 
     Reproduz fielmente a sequência da referência, omitindo um único passo. Se a
-    biblioteca mudar a ordem interna, esta função diverge silenciosamente — daí o
+    biblioteca mudar a ordem interna, esta função diverge silenciosamente - daí o
     teste que compara as duas saídas em compostos sem tartarato, onde elas devem
     ser idênticas.
     """
@@ -79,7 +79,7 @@ _TAUTOMER_ENUMERATOR = rdMolStandardize.TautomerEnumerator()
 def canonicalize_tautomer(mol: Chem.Mol) -> Chem.Mol:
     """Forma tautomérica canônica (ablação da D-04).
 
-    Nota de API: ``rdMolStandardize.TautomerCanonicalizer`` **não existe** — é o nome
+    Nota de API: ``rdMolStandardize.TautomerCanonicalizer`` **não existe** - é o nome
     do MolVS, que está obsoleto. A interface atual é
     ``TautomerEnumerator().Canonicalize()``.
     """
@@ -309,7 +309,7 @@ def run_ablation(
 def _delta(value: float, baseline: float, digits: int = 1) -> str:
     difference = value - baseline
     if abs(difference) < 10**-digits:
-        return "—"
+        return "-"
     return f"{difference:+.{digits}f}"
 
 
@@ -344,7 +344,7 @@ def to_markdown(results: Sequence[VariantResult]) -> str:
         "| --- | ---: | ---: | ---: | ---: | ---: |",
     ]
     for result in results:
-        delta = "—" if result is base else f"{result.n_unique - base.n_unique:+d}"
+        delta = "-" if result is base else f"{result.n_unique - base.n_unique:+d}"
         lines.append(
             f"| `{result.variant.name}` | {result.n_passed} | "
             f"{result.pass_rate:.1%} | {result.n_unique} | {delta} | "
@@ -362,11 +362,11 @@ def to_markdown(results: Sequence[VariantResult]) -> str:
         is_base = result is base
         lines.append(
             f"| `{result.variant.name}` | {result.molecular_weight.mean:.1f} | "
-            f"{'—' if is_base else _delta(result.molecular_weight.mean, base.molecular_weight.mean)} | "
+            f"{'-' if is_base else _delta(result.molecular_weight.mean, base.molecular_weight.mean)} | "
             f"{result.logp.mean:.2f} | "
-            f"{'—' if is_base else _delta(result.logp.mean, base.logp.mean, 2)} | "
+            f"{'-' if is_base else _delta(result.logp.mean, base.logp.mean, 2)} | "
             f"{result.tpsa.mean:.1f} | "
-            f"{'—' if is_base else _delta(result.tpsa.mean, base.tpsa.mean)} |"
+            f"{'-' if is_base else _delta(result.tpsa.mean, base.tpsa.mean)} |"
         )
 
     lines += [
@@ -378,7 +378,7 @@ def to_markdown(results: Sequence[VariantResult]) -> str:
     ]
     for result in results:
         delta = (
-            "—"
+            "-"
             if result is base
             else f"{result.defined_stereocenters - base.defined_stereocenters:+d}"
         )
@@ -423,7 +423,7 @@ def _interpret(results: Sequence[VariantResult]) -> list[str]:
         notes.append(
             "- Nenhuma variante produziu diferença mensurável neste corpus. "
             "Corpus pequeno ou pobre nas classes sensíveis às políticas testadas "
-            "produz esse resultado — verificar a composição antes de concluir que "
+            "produz esse resultado - verificar a composição antes de concluir que "
             "as decisões são indiferentes."
         )
     return notes

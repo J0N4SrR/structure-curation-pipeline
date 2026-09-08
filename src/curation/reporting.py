@@ -32,8 +32,8 @@ class StageStatus(str, Enum):
     SKIPPED = "SKIPPED"
 
 
-#: Ordem real de execução. São os estágios que o motor de fato percorre — não uma
-#: simplificação didática — para que o funil exibido corresponda ao código.
+#: Ordem real de execução. São os estágios que o motor de fato percorre - não uma
+#: simplificação didática - para que o funil exibido corresponda ao código.
 PIPELINE_STAGES: tuple[tuple[str, str], ...] = (
     (Stage.PARSE.value, "Leitura e parsing não-restritivo do SMILES"),
     (Stage.STANDARDIZE.value, "Normalização e neutralização (ChEMBL)"),
@@ -108,7 +108,7 @@ class RunReport:
 
     @property
     def n_duplicates(self) -> int:
-        """Duplicatas reais — colisões de bloco1 não são duplicatas (D-07)."""
+        """Duplicatas reais - colisões de bloco1 não são duplicatas (D-07)."""
         if self.index is None:
             return 0
         counts = self.index.collision_counts()
@@ -163,7 +163,7 @@ class RunReport:
     def largest_reduction(self) -> Optional[StageReport]:
         """Etapa que mais removeu estruturas, ou ``None`` se nenhuma removeu.
 
-        Existe aqui, e não na interface, porque é uma leitura dos dados do lote —
+        Existe aqui, e não na interface, porque é uma leitura dos dados do lote -
         a UI apresenta a frase, não a deriva.
         """
         candidates = [
@@ -362,7 +362,7 @@ def record_row(record: CurationRecord, columns: Sequence[str]) -> dict[str, Any]
 
     ``None`` não é convertido em string vazia de propósito. ``csv.DictWriter`` já
     escreve célula vazia para ``None``, e preservá-lo mantém as colunas numéricas
-    homogêneas — coagir para ``""`` produz uma coluna mista de ``float`` e ``str``
+    homogêneas - coagir para ``""`` produz uma coluna mista de ``float`` e ``str``
     que o Arrow recusa converter ao renderizar a tabela.
     """
     payload = record.model_dump(mode="json")
@@ -497,7 +497,7 @@ Cada registro carrega o estagio em que foi rejeitado, quando aplicavel, e a list
 transformacoes observadas. Nenhuma estrutura e descartada sem registro: a soma das
 exclusoes por motivo no manifesto reconcilia com a diferenca entre entrada e saida.
 
-Colisoes de bloco1 do InChIKey **nao** sao duplicatas — enantiomeros compartilham o
+Colisoes de bloco1 do InChIKey **nao** sao duplicatas - enantiomeros compartilham o
 primeiro bloco. A identidade e o InChIKey completo.
 
 ## Reproducao
@@ -510,7 +510,7 @@ primeiro bloco. A identidade e o InChIKey completo.
 
 Versoes: RDKit {provenance.versions.get('rdkit')}, chembl_structure_pipeline
 {provenance.versions.get('chembl_structure_pipeline')}. Mudancas de versao do RDKit
-alteram percepcao de aromaticidade e regras de padronizacao — dois lotes com RDKit
+alteram percepcao de aromaticidade e regras de padronizacao - dois lotes com RDKit
 diferente nao sao comparaveis mesmo com o mesmo policy_hash.
 """
 

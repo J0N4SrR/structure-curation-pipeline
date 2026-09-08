@@ -3,8 +3,8 @@
 Vive na camada de engenharia, não na interface. A UI apresenta estes dados; ela não
 os deriva, não os completa e não os estima.
 
-Todo campo aqui é **observado**. Quando uma informação não pode ser obtida — o
-repositório não é um checkout git, o arquivo de política não existe — o campo diz
+Todo campo aqui é **observado**. Quando uma informação não pode ser obtida - o
+repositório não é um checkout git, o arquivo de política não existe - o campo diz
 isso explicitamente em vez de receber um valor plausível. Proveniência inventada é
 pior que proveniência ausente: a segunda avisa, a primeira engana.
 """

@@ -51,7 +51,7 @@ def test_bare_anion_converges_to_the_free_acid(pipeline: CurationPipeline) -> No
     """O ``Uncharger`` neutraliza o ânion isolado, tornando-o o mesmo composto.
 
     Sem contra-íon para balancear a carga, ``[O-]C(=O)c1ccccc1`` vira ácido
-    benzoico — mesma identidade, portanto duplicata exata.
+    benzoico - mesma identidade, portanto duplicata exata.
     """
     index = DedupIndex()
     index.add(curate(pipeline, "O=C(O)c1ccccc1", "A1"))
@@ -68,7 +68,7 @@ def test_sodium_salt_is_a_different_compound_entirely(
     """Interação D-06 x D-07: o sódio é retido, então a molécula é outra.
 
     Como o guard "tudo é sal" preserva o ``[Na+]``, o benzoato de sódio não é uma
-    forma protonada do ácido benzoico — é outro composto, com outro esqueleto de
+    forma protonada do ácido benzoico - é outro composto, com outro esqueleto de
     conectividade. Não há colisão a reportar.
     """
     acid = curate(pipeline, "O=C(O)c1ccccc1", "A1")

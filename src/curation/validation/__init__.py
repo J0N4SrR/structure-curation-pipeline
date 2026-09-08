@@ -2,9 +2,9 @@
 
 Dois módulos independentes:
 
-* :mod:`~curation.validation.benchmarking` — desempenho contra um padrão-ouro
+* :mod:`~curation.validation.benchmarking` - desempenho contra um padrão-ouro
   curado por dois anotadores humanos, com κ de Cohen e taxa de falsos rejeitados.
-* :mod:`~curation.validation.ablation` — impacto a jusante de cada decisão de
+* :mod:`~curation.validation.ablation` - impacto a jusante de cada decisão de
   política, medido em deduplicação, propriedades físico-químicas e conservação de
   estereoquímica.
 

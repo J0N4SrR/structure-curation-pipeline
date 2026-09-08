@@ -66,7 +66,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "rejeita estruturas sem carbono (sais inorgânicos, íons metálicos "
-            "isolados). Desligado por padrão — ver D-12"
+            "isolados). Desligado por padrão - ver D-12"
         ),
     )
     parser.add_argument(
@@ -104,7 +104,7 @@ def _resolve_policy_hash(path: Path) -> str:
     """SHA-256 do arquivo de decisões, ou um marcador explícito de ausência.
 
     Executar sem o documento de política é possível, mas o lote fica marcado como
-    tal — jamais com um hash falso que sugira reprodutibilidade inexistente.
+    tal - jamais com um hash falso que sugira reprodutibilidade inexistente.
     """
     try:
         return compute_policy_hash(path)

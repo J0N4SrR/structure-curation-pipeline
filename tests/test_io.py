@@ -83,7 +83,7 @@ def test_reads_tsv(tmp_path: Path) -> None:
 
 
 def test_detects_smiles_column_when_name_comes_first(tmp_path: Path) -> None:
-    """Formato ``NOME<TAB>SMILES`` — o usado pelos ``.smi`` do ChEMBL.
+    """Formato ``NOME<TAB>SMILES`` - o usado pelos ``.smi`` do ChEMBL.
 
     É o inverso da convenção Daylight. Uma leitura posicional interpretaria
     ``Ethanolamine`` como estrutura.

@@ -9,7 +9,7 @@ como molécula. A coluna de estrutura é, portanto, determinada por **parseabili
 sobre uma amostra, nunca por posição.
 
 **Atomicidade.** Um lote interrompido não pode deixar para trás um arquivo truncado
-indistinguível de um completo — num projeto cuja tese é reprodutibilidade, isso é pior
+indistinguível de um completo - num projeto cuja tese é reprodutibilidade, isso é pior
 que estourar a memória. A escrita ocorre em ``.tmp``, a promoção é por ``os.replace``,
 e ``manifest.json`` é o **marcador de completude**: sua ausência significa execução
 incompleta, independentemente do que exista em disco.
@@ -72,7 +72,7 @@ def _detect_encoding(path: Path) -> str:
     """Escolhe a codificação lendo um trecho inicial.
 
     UTF-8 primeiro, em modo estrito, para que a detecção seja real. ``latin-1``
-    encerra a lista porque decodifica qualquer byte — é o fallback que nunca falha,
+    encerra a lista porque decodifica qualquer byte - é o fallback que nunca falha,
     ao custo de possivelmente produzir mojibake em campos de texto livre. Nomes
     corrompidos são recuperáveis; uma exceção no meio de um lote de milhões, não.
     """
@@ -117,7 +117,7 @@ def _iter_raw_lines(source: Source) -> Iterator[str]:
 def _clean(lines: Iterable[str]) -> Iterator[str]:
     """Remove espaços laterais, linhas em branco e comentários ``#``.
 
-    Comentários iniciados por ``#`` são convenção nos ``.smi`` do ecossistema — o
+    Comentários iniciados por ``#`` são convenção nos ``.smi`` do ecossistema - o
     próprio leitor da referência os descarta.
     """
     for line in lines:
@@ -373,14 +373,14 @@ class BatchWriter:
             for record in records:
                 writer.write(record)
 
-    Ao sair sem exceção, os ``.tmp`` são promovidos por ``os.replace`` — atômico no
-    mesmo sistema de arquivos — e ``manifest.json`` é gravado por último. Ao sair com
+    Ao sair sem exceção, os ``.tmp`` são promovidos por ``os.replace`` - atômico no
+    mesmo sistema de arquivos - e ``manifest.json`` é gravado por último. Ao sair com
     exceção, os ``.tmp`` são removidos e nenhum arquivo final é criado.
 
     **Limite honesto:** um crash do sistema operacional impede ``__exit__`` de rodar,
     então nenhum código pode limpar nada naquele instante. Por isso a limpeza de
     resíduos acontece em ``__enter__``, que remove ``.tmp`` de execuções anteriores
-    interrompidas, e por isso ``manifest.json`` — escrito por último — é o único
+    interrompidas, e por isso ``manifest.json`` - escrito por último - é o único
     marcador confiável de completude. Saída sem manifesto é saída inválida.
     """
 

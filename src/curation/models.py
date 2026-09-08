@@ -2,7 +2,7 @@
 
 Os modelos aqui definem o contrato de saída. Toda decisão de política registrada em
 ``docs/decisions.md`` que produza efeito observável precisa ter um campo ou um evento
-correspondente neste módulo — caso contrário a decisão não é auditável.
+correspondente neste módulo - caso contrário a decisão não é auditável.
 """
 
 from __future__ import annotations
@@ -57,7 +57,7 @@ class TransformationEvent(BaseModel):
 
     Registra apenas o que foi *observado* comparando os estados antes e depois. O
     motor é uma caixa-preta de oito passos internos (D-01), então nenhum evento aqui
-    afirma qual regra interna disparou — apenas que o efeito é compatível com ela.
+    afirma qual regra interna disparou - apenas que o efeito é compatível com ela.
     """
 
     model_config = ConfigDict(frozen=True)

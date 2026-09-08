@@ -2,12 +2,12 @@
 
 Nota terminológica: estes são **critérios de elegibilidade / escopo químico**, não
 "domínio de aplicabilidade". Domínio de aplicabilidade é conceito dependente de
-modelo — cobertura do espaço de descritores, *leverage*, distância ao modelo — e
+modelo - cobertura do espaço de descritores, *leverage*, distância ao modelo - e
 pertence à etapa de modelagem, não à curadoria.
 
 Os cortes incidem sobre a **estrutura-mãe isolada**, nunca sobre a forma salificada:
 medir a massa do contra-íon rejeitaria compostos válidos. Os padrões são ponto de
-partida documentado, não constante universal — produtos naturais, macrociclos e
+partida documentado, não constante universal - produtos naturais, macrociclos e
 peptídeos exigem revisão explícita.
 """
 
@@ -67,7 +67,7 @@ def molecular_properties(mol: Chem.Mol) -> tuple[float, int]:
 
     Tolera moléculas não sanitizadas: compostos com ``exclude_flag`` ativo (D-03)
     nunca passam pela sanitização da referência, e ainda assim precisam ser
-    filtrados. Reparsear o SMILES curado não é alternativa — para essas estruturas
+    filtrados. Reparsear o SMILES curado não é alternativa - para essas estruturas
     ``MolFromSmiles`` devolve ``None``.
     """
     try:

@@ -1,11 +1,11 @@
 """Wrapper de auditoria sobre o motor químico do ChEMBL.
 
 Responsabilidade única: chamar ``standardize_mol`` e ``get_parent_mol`` da biblioteca
-oficial e observar o que aconteceu. Nenhuma química é implementada aqui — D-01.
+oficial e observar o que aconteceu. Nenhuma química é implementada aqui - D-01.
 
 Restrição de ordem (D-09): o estágio de parsing **instrumenta e registra, nunca
 rejeita por valência**. O normalizador da referência repara classes inteiras que uma
-sanitização estrita descartaria — amônios quaternários neutros e sais de diazônio,
+sanitização estrita descartaria - amônios quaternários neutros e sais de diazônio,
 entre outras. A rejeição por valência só é legítima depois do motor, e é por isso que
 ela emerge de ``standardize_mol``, que sanitiza ao final.
 """
@@ -274,8 +274,8 @@ class EngineWrapper:
     def _parse(self, raw_smiles: str) -> Chem.Mol | _Failure:
         """Parsing não-restritivo.
 
-        ``sanitize=False`` deixa a molécula em estado inconsistente — sem percepção de
-        anéis nem valências calculadas — daí o ``UpdatePropertyCache(strict=False)``
+        ``sanitize=False`` deixa a molécula em estado inconsistente - sem percepção de
+        anéis nem valências calculadas - daí o ``UpdatePropertyCache(strict=False)``
         obrigatório na sequência. ``strict=False`` é o ponto central: valências
         anômalas são toleradas aqui para que o motor tenha a chance de repará-las.
         """
@@ -309,7 +309,7 @@ class EngineWrapper:
 
         É aqui que a rejeição por valência legitimamente aparece: ``standardize_mol``
         sanitiza ao final, depois de ter tentado normalizar. Uma exceção neste ponto
-        significa que o motor não conseguiu reparar a estrutura — diferente de
+        significa que o motor não conseguiu reparar a estrutura - diferente de
         rejeitá-la antes de tentar.
         """
         try:
@@ -346,7 +346,7 @@ class EngineWrapper:
         quaternários neutros e diazônios, que a referência conserta.
 
         Compostos com ``exclude_flag`` ativo são dispensados do portão, porque o
-        próprio motor pula a sanitização deles (D-03) — aplicá-la aqui revogaria a
+        próprio motor pula a sanitização deles (D-03) - aplicá-la aqui revogaria a
         decisão de preservá-los. O caso concreto é um carborano de 8 boros presente
         no corpus da referência, anotado lá como ">7 Boron atoms": ele atravessa o
         motor e seria descartado por um portão incondicional.
@@ -371,7 +371,7 @@ class EngineWrapper:
             # identidade. As ligações duplas chegam aqui como STEREONONE: o motor
             # preserva as direções das ligações, mas não reatribui os descritores
             # E/Z. Sem isto o InChI não enxerga a estereoquímica e ácido fumárico e
-            # ácido maleico saem com o mesmo InChIKey — que é a chave de
+            # ácido maleico saem com o mesmo InChIKey - que é a chave de
             # deduplicação (D-07), então seriam fundidos como duplicata exata.
             Chem.AssignStereochemistry(parent, cleanIt=True, force=True)
         except Exception:
@@ -481,7 +481,7 @@ class EngineWrapper:
         A linha de base é a molécula **padronizada**, não a entrada crua. A remoção de
         fragmentos ocorre exclusivamente em ``get_parent_mol``; comparar contra a
         entrada crua confundiria transformação com remoção, porque a normalização
-        reescreve os fragmentos retidos — ``CC(=O)O[Na]`` vira ``CC(=O)[O-].[Na+]``
+        reescreve os fragmentos retidos - ``CC(=O)O[Na]`` vira ``CC(=O)[O-].[Na+]``
         sem que nada tenha sido removido.
 
         Comparação por multiconjunto de SMILES: a referência deduplica componentes

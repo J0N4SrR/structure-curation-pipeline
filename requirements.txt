@@ -1,4 +1,4 @@
-rdkit==2026.3.5
+rdkit==2026.3.6
 chembl_structure_pipeline==1.2.4
 pydantic==2.13.4
 streamlit>=1.30

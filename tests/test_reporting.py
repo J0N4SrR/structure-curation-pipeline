@@ -1,6 +1,6 @@
 """Testes da camada de relatório e proveniência.
 
-Cobrem o que o app exibe. O app em si é apresentação e não é testado aqui —
+Cobrem o que o app exibe. O app em si é apresentação e não é testado aqui -
 Streamlit não está instalado neste ambiente.
 """
 
@@ -49,7 +49,7 @@ def report():
 
 
 def test_funnel_is_continuous(report) -> None:
-    """A saída de um estágio é a entrada do seguinte — sem buracos."""
+    """A saída de um estágio é a entrada do seguinte - sem buracos."""
     stages = report.stages
     assert stages[0].n_input == report.total
     for previous, following in zip(stages, stages[1:]):

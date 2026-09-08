@@ -2,7 +2,7 @@
 
 Cada teste trava um modo de falha estabelecido empiricamente contra a implementação
 de referência. Os valores esperados foram obtidos executando o
-``chembl_structure_pipeline``, nunca escritos de memória — o atalho oposto foi o que
+``chembl_structure_pipeline``, nunca escritos de memória - o atalho oposto foi o que
 produziu o teste incorreto de benzoato de sódio no roadmap original.
 """
 
@@ -52,7 +52,7 @@ def test_ionization_is_not_reported_as_fragment_removal(
     """Regressão: transformação não pode ser contabilizada como remoção.
 
     A linha de base de ``removed_fragments`` é a molécula padronizada, não a entrada
-    crua — a normalização reescreve os fragmentos retidos.
+    crua - a normalização reescreve os fragmentos retidos.
     """
     record = engine.curate("T", "CC(=O)O[Na]")
     assert record.removed_fragments is None

@@ -6,7 +6,7 @@ saída do ``chembl_structure_pipeline`` seria tautológico: o motor é o mesmo, 
 qualquer divergência seria bug do wrapper. O único referencial com conteúdo é o
 julgamento humano.
 
-Convenção da matriz de confusão — declarada explicitamente porque a métrica
+Convenção da matriz de confusão - declarada explicitamente porque a métrica
 principal depende dela. A **classe positiva é REJECT**: a tarefa do pipeline é
 detectar estruturas problemáticas.
 
@@ -54,7 +54,7 @@ class GoldStandardEntry:
 
     Attributes:
         consensus: rótulo acordado. Fica vazio quando os anotadores divergiram e a
-            divergência ainda não foi resolvida — esses registros entram no cálculo
+            divergência ainda não foi resolvida - esses registros entram no cálculo
             de κ, mas não na matriz de confusão, porque não existe verdade contra a
             qual comparar.
     """
@@ -138,8 +138,8 @@ def write_annotation_template(
     """Gera o CSV em branco para os anotadores preencherem.
 
     Existe para que a anotação possa começar **em paralelo** ao desenvolvimento. É a
-    única etapa do projeto com dependência humana de prazo longo — recrutar, treinar
-    e calibrar um segundo anotador leva semanas — e adiá-la para depois do código
+    única etapa do projeto com dependência humana de prazo longo - recrutar, treinar
+    e calibrar um segundo anotador leva semanas - e adiá-la para depois do código
     pronto é o que comprime a validação até ela perder valor.
     """
     target = Path(path)
@@ -413,6 +413,6 @@ def benchmark_report(
             "",
             "> **Atenção:** κ abaixo de 0,61 indica concordância inter-anotador "
             "insuficiente. As métricas de desempenho acima carregam essa "
-            "incerteza — calibrar os anotadores antes de reportá-las.",
+            "incerteza - calibrar os anotadores antes de reportá-las.",
         ]
     return "\n".join(sections)

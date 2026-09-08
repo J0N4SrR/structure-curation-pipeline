@@ -1,7 +1,7 @@
 """Orquestração de execução: registro único e lote.
 
-A ordem dos estágios químicos — parse, instrumentação, ``standardize_mol``,
-``get_parent_mol``, portão de valência, canonicalização — é implementada em
+A ordem dos estágios químicos - parse, instrumentação, ``standardize_mol``,
+``get_parent_mol``, portão de valência, canonicalização - é implementada em
 :class:`~curation.engine.EngineWrapper`, que é quem detém o ciclo de vida das
 moléculas. Este módulo não reimplementa nenhum estágio: duplicar a sequência em dois
 lugares criaria exatamente o tipo de divergência silenciosa que a suíte de regressão
@@ -157,7 +157,7 @@ class CurationPipeline:
         A ingestão é um gerador e os registros são escritos à medida que saem, de
         modo que a memória não cresce com o tamanho da entrada. Se algo falhar no
         meio, o :class:`~curation.io.BatchWriter` descarta os temporários e não grava
-        manifesto — a saída fica reconhecidamente incompleta em vez de parecer boa.
+        manifesto - a saída fica reconhecidamente incompleta em vez de parecer boa.
         """
         out_path = Path(out_dir)
         index = DedupIndex() if self.deduplicate else None

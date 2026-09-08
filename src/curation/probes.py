@@ -7,7 +7,7 @@ estados antes e depois de um estágio e reporta um efeito *compatível* com uma 
 conhecida, sem alegar acesso ao interior do motor.
 
 Cada sonda existe para tornar mensurável uma decisão de ``docs/decisions.md``. Sondas
-não são adicionadas por conveniência: o critério é epistêmico, não de desempenho —
+não são adicionadas por conveniência: o critério é epistêmico, não de desempenho -
 medições mostram que o custo das sondas é de 2 a 4% do tempo total, enquanto o motor
 responde por ~85%.
 
@@ -155,7 +155,7 @@ class Probe(Protocol):
 
 
 class CovalentAlkaliMetalProbe:
-    """Ionização de metal alcalino covalentemente ligado — D-01, canário da ordem.
+    """Ionização de metal alcalino covalentemente ligado - D-01, canário da ordem.
 
     O motor quebra ligações Li/Na/K–N/O dentro de ``normalize_mol``, *antes* do
     stripping de fragmentos. Se a ordem for invertida, ``GetMolFrags`` enxerga um
@@ -163,7 +163,7 @@ class CovalentAlkaliMetalProbe:
     de execução.
 
     Além de registrar a ionização, esta sonda emite ``alkali_metal_residual`` quando
-    resta ligação covalente no estado final — é o alarme direto para essa regressão.
+    resta ligação covalente no estado final - é o alarme direto para essa regressão.
     """
 
     rule = "alkali_metal_ionized"
@@ -205,15 +205,15 @@ class CovalentAlkaliMetalProbe:
 
 
 class TartrateFlattenProbe:
-    """Perda de quiralidade em tartaratos — D-02.
+    """Perda de quiralidade em tartaratos - D-02.
 
     A D-02 aceita ``flatten_tartrate_mol`` de forma incondicional, porque a API
     pública não permite desativá-la. A contrapartida é que toda ocorrência seja
     registrada, para que a perda vire um número no relatório de lote em vez de um
     efeito invisível.
 
-    Exige as duas condições — casamento do padrão de tartarato livre *e* redução de
-    centros definidos — para não atribuir ao achatamento uma perda de estereoquímica
+    Exige as duas condições - casamento do padrão de tartarato livre *e* redução de
+    centros definidos - para não atribuir ao achatamento uma perda de estereoquímica
     de outra origem.
     """
 
@@ -245,7 +245,7 @@ class TartrateFlattenProbe:
 
 
 class NetChargeProbe:
-    """Variação de carga formal líquida — D-01 e D-06.
+    """Variação de carga formal líquida - D-01 e D-06.
 
     O ``Uncharger`` da referência é ciente de balanço de carga: não neutraliza um
     ânion enquanto houver contra-íon presente. Por isso o motor desprotona duas
@@ -275,7 +275,7 @@ class NetChargeProbe:
 
 
 class FragmentCountProbe:
-    """Variação no número de componentes desconectados — D-06.
+    """Variação no número de componentes desconectados - D-06.
 
     Reporta os dois sentidos. Redução é remoção de sal ou solvente, com os SMILES
     removidos no detalhe. **Aumento** ocorre quando a normalização ioniza uma ligação

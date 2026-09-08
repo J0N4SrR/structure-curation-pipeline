@@ -2,7 +2,7 @@
 
 Cada caso aqui trava um comportamento medido contra a implementação de referência.
 Diferente de ``test_engine.py``, que exercita o wrapper, esta suíte entra pela API
-pública do pipeline — é o contrato que a CLI e a interface vão consumir.
+pública do pipeline - é o contrato que a CLI e a interface vão consumir.
 
 Todos os valores esperados foram obtidos executando o ``chembl_structure_pipeline``.
 Nenhum foi escrito de memória: o teste original de benzoato de sódio, redigido a
