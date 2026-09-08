@@ -249,3 +249,94 @@ def test_app_full_lifecycle_without_exceptions() -> None:
     at.button[0].click().run()
     assert not at.exception
     assert at.session_state["report"] is not None
+
+
+# --- Grafo interativo e selecao de no ------------------------------------------
+
+
+def test_selected_node_starts_empty() -> None:
+    """Sem selecao, o painel mostra o resumo da execucao."""
+    from streamlit.testing.v1 import AppTest
+
+    app = AppTest.from_file(APP_PATH, default_timeout=90).run()
+    assert not app.exception
+    assert "selected_node" not in app.session_state or (
+        app.session_state["selected_node"] is None
+    )
+
+
+def test_reset_clears_the_selected_node() -> None:
+    from curation.app import reset_to_input
+    import streamlit as st
+
+    st.session_state["selected_node"] = "STANDARDIZE"
+    try:
+        reset_to_input()
+    except Exception:
+        pass
+    assert st.session_state.get("selected_node") is None
+
+
+def test_node_details_panel_uses_the_view_model() -> None:
+    """O painel consome NodeContract; nao recalcula metrica nenhuma."""
+    from curation.pipeline import CurationPipeline
+    from curation.viewmodel import build_run_view
+
+    source = "CCO\nCC(=O)O[Na]\nC(C)(C)(C)(C)C\n"
+    report = CurationPipeline("0" * 64).run_report(
+        source, input_bytes=source.encode()
+    )
+    view = build_run_view(report)
+
+    node = view.graph.node("STANDARDIZE")
+    assert node is not None
+    assert node.input_count == report.stages[1].n_input
+    assert node.output_count == report.stages[1].n_output
+    assert node.rejected_count == report.stages[1].n_excluded
+
+
+def test_graph_selection_round_trips_through_the_component() -> None:
+    """O clique volta do navegador e vira selected_node.
+
+    Exercita o canal de retorno pelo lado Python: o componente recebe a selecao
+    atual e devolve um identificador valido.
+    """
+    from streamlit.testing.v1 import AppTest
+
+    probe = Path(__file__).parent / "_dag_probe.py"
+    probe.write_text(
+        "import streamlit as st\n"
+        "from curation.pipeline import CurationPipeline\n"
+        "from curation.viewmodel import build_run_view\n"
+        "from curation.components.dag import render_dag\n"
+        "src = 'CCO\\nCC(=O)O[Na]\\nC(C)(C)(C)(C)C\\n'\n"
+        "vm = build_run_view(CurationPipeline('0'*64).run_report(src, input_bytes=src.encode()))\n"
+        "st.session_state['selected_node'] = render_dag(vm.graph, selected='ELIGIBILITY')\n",
+        encoding="utf-8",
+    )
+    try:
+        app = AppTest.from_file(str(probe), default_timeout=90).run()
+        assert not app.exception
+        assert app.session_state["selected_node"] == "ELIGIBILITY"
+    finally:
+        probe.unlink(missing_ok=True)
+
+
+def test_unknown_node_id_from_the_browser_is_discarded() -> None:
+    """O componente nunca inventa uma selecao a partir de valor invalido."""
+    from unittest.mock import patch
+
+    from curation.components import dag
+    from curation.pipeline import CurationPipeline
+    from curation.viewmodel import build_run_view
+
+    source = "CCO\n"
+    graph = build_run_view(
+        CurationPipeline("0" * 64).run_report(source, input_bytes=source.encode())
+    ).graph
+
+    with patch.object(dag, "_component", return_value="NO_INEXISTENTE"):
+        assert dag.render_dag(graph, selected="PARSE") == "PARSE"
+
+    with patch.object(dag, "_component", return_value="ELIGIBILITY"):
+        assert dag.render_dag(graph, selected="PARSE") == "ELIGIBILITY"

@@ -31,9 +31,11 @@ except ImportError as _error:
     DRAWING_AVAILABLE = False
     DRAWING_ERROR = str(_error)
 
+from curation.components.dag import render_dag
 from curation.filters import EligibilityCriteria
 from curation.io import compute_policy_hash, preview_input
 from curation.pipeline import CurationPipeline
+from curation.viewmodel import NodeContract, RunViewModel, build_run_view
 from curation.reporting import (
     DEDUP_STAGE,
     RunReport,
@@ -249,6 +251,7 @@ def init_session_state() -> None:
 
 
 def reset_to_input() -> None:
+    st.session_state["selected_node"] = None
     st.session_state["ui_state"] = "INPUT"
     st.session_state["curating_step_idx"] = 0
     st.session_state["step_start_time"] = 0.0
@@ -496,6 +499,108 @@ def get_step_summary(step_id: str, report: Optional[RunReport]) -> str:
     return ""
 
 
+def render_run_details(view: RunViewModel) -> None:
+    """Resumo global, exibido quando nenhum no esta selecionado."""
+    st.markdown(f"#### Detalhes da execucao {view.glyph} {view.status_text}")
+    st.caption(
+        "Nenhum estagio selecionado. Clique em um no do grafo para ver o que "
+        "aconteceu nele."
+    )
+    a, b, c, d = st.columns(4)
+    a.metric("Entrada", view.input_count)
+    b.metric("Aprovadas", view.approved)
+    c.metric("Rejeitadas", view.rejected)
+    d.metric("Taxa de aprovacao", f"{view.approval_rate:.0%}")
+
+    e, f, g = st.columns(3)
+    e.metric("Transformadas", view.transformed)
+    f.metric("Duplicatas", view.duplicates)
+    g.metric(
+        "Duracao",
+        f"{view.duration_seconds:.2f} s" if view.duration_seconds else "-",
+    )
+
+
+def render_node_details(node: NodeContract, report: RunReport) -> None:
+    """Detalhe contextual do no selecionado."""
+    st.markdown(f"#### {node.label}  {node.glyph} {node.status_text}")
+    st.caption(node.help_text)
+
+    a, b, c, d, e = st.columns(5)
+    a.metric("Entrada", node.input_count)
+    b.metric("Resultado", node.output_count)
+    c.metric("Transformadas", node.transformed_count)
+    d.metric("Removidas", node.rejected_count)
+    e.metric(
+        "Duracao",
+        f"{node.duration_seconds * 1000:.0f} ms" if node.duration_seconds else "-",
+    )
+
+    if node.parameters:
+        with st.expander("Parametros que governam este estagio"):
+            st.json(node.parameters)
+
+    if node.exclusions:
+        st.markdown("##### O que foi removido aqui")
+        st.dataframe(
+            [
+                {"Motivo": group.reason, "Quantidade": group.count}
+                for group in node.exclusions
+            ],
+            hide_index=True,
+            width="stretch",
+        )
+
+    for artifact in node.artifacts:
+        registros = report.records_by_id(artifact.record_ids)
+        st.download_button(
+            f"{artifact.name} ({artifact.count})",
+            to_csv(
+                registros,
+                ("input_id", "raw_smiles", "rejection_code", "rejection_detail"),
+            ),
+            file_name=artifact.name,
+            mime="text/csv",
+            help=artifact.description,
+            key=f"artifact_{node.id}_{artifact.name}",
+        )
+
+    if not node.exclusions and not node.artifacts:
+        st.success("Nenhuma estrutura foi removida neste estagio.")
+
+
+def render_pipeline_graph(report: RunReport) -> None:
+    """Grafo interativo e painel contextual.
+
+    O clique em um no volta do navegador pelo componente e vira
+    ``selected_node``; o painel abaixo alterna entre detalhe da execucao e
+    detalhe do estagio.
+    """
+    view = build_run_view(report)
+    st.session_state["run_view"] = view
+
+    left, right = st.columns([1, 2])
+    with left:
+        escolhido = render_dag(
+            view.graph, selected=st.session_state.get("selected_node"), height=560
+        )
+        if escolhido != st.session_state.get("selected_node"):
+            st.session_state["selected_node"] = escolhido
+            st.rerun()
+        if st.session_state.get("selected_node"):
+            if st.button("Voltar ao resumo da execucao", width="stretch"):
+                st.session_state["selected_node"] = None
+                st.rerun()
+
+    with right:
+        selecionado = st.session_state.get("selected_node")
+        node = view.graph.node(selecionado) if selecionado else None
+        if node is None:
+            render_run_details(view)
+        else:
+            render_node_details(node, report)
+
+
 def render_results_screen() -> None:
     report: Optional[RunReport] = st.session_state.get("report")
     is_complete = st.session_state["ui_state"] == "COMPLETE"
@@ -529,11 +634,18 @@ def render_results_screen() -> None:
 
     # 4. VER O PIPELINE
     st.markdown("### 4. VER O PIPELINE")
-    st.caption("Acompanhe o funil de execução e a passagem das moléculas em cada estágio.")
+
+    usar_grafo = is_complete and report is not None
+    if usar_grafo:
+        st.caption(
+            "Clique em um no para ver o que aconteceu nele. Arraste para mover, "
+            "role para aproximar."
+        )
+        render_pipeline_graph(report)
 
     cur_idx = st.session_state["curating_step_idx"] if not is_complete else len(WIZARD_STAGES) - 1
 
-    for idx, stage_info in enumerate(WIZARD_STAGES):
+    for idx, stage_info in enumerate([] if usar_grafo else WIZARD_STAGES):
         if is_complete or idx < cur_idx:
             status_icon = "✓"
             status_class = "status-completed"
