@@ -54,11 +54,13 @@ def test_valid_smiles_enables_start_button() -> None:
 
     # Expand the expander "📂 Ingestão de Moléculas (SMILES)" which is the first expander
     # Actually just write to the text area
-    at.text_area[0].input("CCO\nCC(=O)O[Na]").run()
-    at.run() # Rerun to update button disabled state since it is rendered above the input area
+    at.text_area[0].input("CCO\nCC(=O)O[Na]")
+    at.button[1].click().run() # Click "Carregar Moléculas" and rerun
 
     assert at.session_state["raw_input"] is not None
     assert "2 moléculas detectadas" in at.success[0].value
+    
+    at.run() # Rerun to update button disabled state since it is rendered above the input area
     assert not at.button[0].disabled
 
 

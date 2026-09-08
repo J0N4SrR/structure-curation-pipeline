@@ -70,7 +70,7 @@ def inject_styles() -> None:
         <style>
           .block-container {
             max-width: 1000px;
-            padding-top: 1.5rem;
+            padding-top: 4.5rem !important;
             padding-bottom: 3rem;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
           }
@@ -80,8 +80,8 @@ def inject_styles() -> None:
             background: #0F172A;
             border: 1px solid #334155;
             border-radius: 8px;
-            padding: 12px 18px;
-            margin-bottom: 8px;
+            padding: 14px 18px;
+            margin-bottom: 10px;
             font-family: ui-monospace, monospace;
             font-size: 12px;
             display: flex;
@@ -89,34 +89,34 @@ def inject_styles() -> None:
             align-items: center;
           }
           .card-running {
-            border: 2px solid #0284C7;
-            box-shadow: 0 0 14px rgba(2, 132, 199, 0.45);
+            border: 2px solid #0284C7 !important;
+            box-shadow: 0 0 16px rgba(2, 132, 199, 0.45);
             background: #0F172A;
           }
           .card-success {
-            border-left: 6px solid #10B981;
+            border-left: 6px solid #10B981 !important;
           }
           .card-warning {
-            border-left: 6px solid #F59E0B;
+            border-left: 6px solid #F59E0B !important;
           }
           .badge-running {
             background: #0284C7;
             color: #FFFFFF;
-            padding: 3px 8px;
+            padding: 4px 8px;
             border-radius: 4px;
             font-weight: 700;
           }
           .badge-success {
             background: #065F46;
             color: #34D399;
-            padding: 3px 8px;
+            padding: 4px 8px;
             border-radius: 4px;
             font-weight: 700;
           }
           .badge-warning {
             background: #78350F;
             color: #FBBF24;
-            padding: 3px 8px;
+            padding: 4px 8px;
             border-radius: 4px;
             font-weight: 700;
           }
@@ -161,16 +161,24 @@ def render_card_html(stage_id: str, label: str, status: str, n_in: any, n_out: a
         badge = '<span class="badge-success">COMPLETED</span>'
     else:
         css_class = "pipeline-card"
-        badge = '<span style="color: #64748B;">PENDING</span>'
+        badge = '<span style="color: #94A3B8; font-weight: 600;">PENDING</span>'
 
-    metrics = f"<span>IN: <b>{n_in}</b> &nbsp;|&nbsp; OUT: <b>{n_out}</b> &nbsp;|&nbsp; REJ: <b>{n_rej}</b></span>"
+    # Alto contraste: texto cinza claro (#E2E8F0) e valores destacados em ciano (#38BDF8)
+    metrics = (
+        f'<span style="color: #E2E8F0; font-size: 11px;">'
+        f'IN: <b style="color: #FFFFFF;">{n_in}</b> &nbsp;|&nbsp; '
+        f'OUT: <b style="color: #FFFFFF;">{n_out}</b> &nbsp;|&nbsp; '
+        f'REJ: <b style="color: #F87171;">{n_rej}</b>'
+        f'</span>'
+    )
+
     return f"""
     <div class="{css_class}">
         <div>
-            <span style="font-weight: 700; color: #F8FAFC; margin-right: 12px;">[{stage_id}]</span>
-            <span style="color: #94A3B8;">{label}</span>
+            <span style="font-weight: 800; color: #FFFFFF; margin-right: 10px; font-size: 13px;">[{stage_id}]</span>
+            <span style="color: #CBD5E1; font-weight: 500;">{label}</span>
         </div>
-        <div style="display: flex; align-items: center; gap: 20px;">
+        <div style="display: flex; align-items: center; gap: 16px;">
             {metrics}
             {badge}
         </div>
@@ -300,13 +308,21 @@ def render_workbench():
         input_name = ""
 
         with tab_paste:
-            text = st.text_area(
-                "SMILES Input",
-                height=120,
-                placeholder="CCO\nCC(=O)O[Na]\nN[C@@H](C)C(=O)O.Cl\nc1ccccc1",
-                label_visibility="collapsed"
-            )
-            if text.strip():
+            with st.form("form_smiles_input", clear_on_submit=False):
+                text = st.text_area(
+                    "SMILES Input",
+                    height=130,
+                    placeholder="CCO\nCC(=O)O[Na]\nN[C@@H](C)C(=O)O.Cl\nc1ccccc1",
+                    label_visibility="collapsed",
+                    help="Insira um SMILES por linha",
+                )
+                btn_load = st.form_submit_button(
+                    "📥 Carregar Moléculas",
+                    type="secondary",
+                    use_container_width=True,
+                )
+
+            if btn_load and text.strip():
                 raw_bytes = text.encode("utf-8")
                 input_name = "pasted_structures.smi"
 
