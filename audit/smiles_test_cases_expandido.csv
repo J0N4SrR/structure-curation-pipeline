@@ -1,0 +1,75 @@
+SMILES,Tipo_Teste,Categoria,Descricao
+CCO,Happy,Happy Path,Etanol - molé¢¢cula simples v#U00e1lida
+CC(=O)O,Happy,Happy Path,#U00c1cido ac#U00e9tico - #U00e1cido carbox#U00edlico simples
+c1ccccc1,Happy,Happy Path,Benzeno - arom#U00e1tico simples
+CC(=O)Oc1ccccc1C(=O)O,Happy,Happy Path,Aspirina - mol#U00e9cula farmac#U00eautica comum
+CN1C=NC2=C1C(=O)N(C(=O)N2C)C,Happy,Happy Path,Cafe#U00edna - alcaloide complexo
+CC(C)Cc1ccc(cc1)C(C)C(=O)O,Happy,Happy Path,Ibuprofeno - AINE comum
+CC1=CC2=C(C=C1)C(=O)C3=C(C2=O)C(=O)C4=C(C=CC=C4)C3=O,Happy,Happy Path,Doxorrubicina - antraciclina complexa
+CO(C)C,Negative,Negative,Val#U00eancia ilegal O (3 liga#U00e7#U00f5es) - deve falhar valida#U00e7#U00e3o
+,Negative,Negative,String vazia - mol#U00e9cula sem #U00e1tomos
+invalid_smiles,Negative,Negative,SMILES inv#U00e1lido - parser error
+C1CC1C,Negative,Negative,Ciclopropano com val#U00eancia excedente - erro de val#U00eancia
+[Foo],Negative,Negative,Elemento inexistente (Foo) - erro de s#U00edmbolo at#U00f4mico
+C[C@H](N)C(=O)O,Negative,Negative,Quiralidade especificada sem sanitize - pode falhar
+[12CH3][13CH3],Negative,Negative,Is#U00f3topos - requer tratamento especial
+C[N+](C)(C)C.[Cl-],Negative,Negative,Sistema n#U00e3o neutro - warning de carga
+O=C([O-])c1ccccc1,Negative,Negative,#U00c2nion carboxilato - sistema n#U00e3o neutro (-1)
+CC(=O)CF,Negative,Negative,Fl#U00faor presente - falha se F n#U00e3o permitido
+CC(=O)C[18F],Negative,Negative,Fl#U00faor-18 (is#U00f3topo radioativo) - valida#U00e7#U00e3o de is#U00f3topos
+[H][C](CO)(NC(=O)C1=C(O)C(O)=CC=C1)C(O)=O,Edge,Edge Case,72-292 taut#U00f4meros - teste de limite maxTautomers
+C1(=CCCCC1)O,Edge,Edge Case,Taut#U00f4mero ceto-enol cl#U00e1ssico - 2 formas
+c1ccccc1CN=c1[nH]cccc1,Edge,Edge Case,Tautomerismo heteroarom#U00e1tico - 2 formas
+CC\C=C(\O)[C@@H](C)C(C)=O,Edge,Edge Case,Quiralidade + tautomerismo - CIP pode mudar
+C/C=C/O,Edge,Edge Case,Estereoquimia E em dupla - teste tautomerRemoveBondStereo
+C/C=C\O,Edge,Edge Case,Estereoquimia Z em dupla - teste tautomerRemoveBondStereo
+[2H]C1=C(C(=C2C(=C1[2H])C(=O)C(=C(C2=O)C([2H])([2H])[2H])C/C=C(\C)/CC([2H])([2H])/C=C(/CC/C=C(\C)/CCC=C(C)C)\C([2H])([2H])[2H])[2H])[2H],Edge,Edge Case,M#U00faltiplos deut#U00e9rios - teste tautomerRemoveIsotopicHs
+C[C@](F)(Cl)C/C=C/[C@H](F)Cl,Edge,Edge Case,M#U00faltiplos centros quirais + dupla - StereoParent
+[12CH3][13CH3],Edge,Edge Case,Is#U00f3topos de carbono - IsotopeParent remove
+[Na]Oc1c([12C@H](F)Cl)c(O[2H])c(C(=O)O)cc1CC=CO,Edge,Edge Case,Sal + is#U00f3topo + estereo + deut#U00e9rio - SuperParent
+CC.O=[Pb]=O,Edge,Edge Case,Org#U00e2nico + inorg#U00e2nico - teste LargestFragmentChooser
+[N+](=O)([O-])[O-].[CH3+],Edge,Edge Case,Fragmentos inorg#U00e2nico/org#U00e2nico - preferOrganic=True/False
+CNC[C@@H]([C@H]([C@@H]([C@@H](CO)O)O)O)O.c1cc2c(cc1C(=O)O)oc(n2)c3cc(cc(c3)Cl)Cl,Edge,Edge Case,Dois fragmentos org#U00e2nicos grandes - teste countHeavyAtomsOnly
+C1CCCCC1[Zn]Br,Error,Error Handling,Organozinco - MetalDisconnector deve processar
+CCC(=O)[O][Na],Error,Error Handling,Sal met#U00e1lico - pode requerer metal_nof customizado
+O=S(O)c1ccc(S(=O)(=O)[O-])cc1,Error,Error Handling,#U00c1cido sulf#U00f4nico + sulfonato - Reionize necess#U00e1rio
+C[n+]1ccccc1[O-],Error,Error Handling,Piridina N-#U00f3xido carregada - Normalizer deve corrigir
+O=N(=O)CCN=N#N,Error,Error Handling,Nitro + azida - NormalizerFromData necess#U00e1rio
+COc1cccc(C=N[N-]C(N)=O)c1[O-].O.O.O.O=[U+2]=O,Error,Error Handling,#U00c1gua + ur#U00e2nio - FragmentValidation warning
+C1COCCO1.O=C(NO)NO,Error,Error Handling,"1,2-dimethoxyethane + 1,4-dioxane - m#U00faltiplos solventes"
+ClCCCl.c1ccccc1O,Error,Error Handling,"1,2-dicloroetano + fenol - FragmentValidation"
+[3CH4],Error,Error Handling,Is#U00f3topo desconhecido (3C) - IsotopeValidation error
+[N](=O)(=O)O,Error,Error Handling,Nitro hipervalente - valida#U00e7#U00e3o de val#U00eancia
+C[N+](C)=C\C=C\[O-],Error,Error Handling,Forma n#U00e3o padronizada - Normalize deve corrigir
+C1=C(C=CC(=C1)[S]([O-])=O)[S](O)(=O)=O,Error,Error Handling,#U00c1cido sulf#U00f4nico mal ionizado - Reionizer
+C[N+](C)(C)CC(C(=O)[O-])CC(=O)[O-],Error,Error Handling,M#U00faltiplas cargas - Uncharger canonicalOrder
+CCC(=O)O[Na],Sais/Solventes,Sais/Solventes,Benzoato de s#U00f3dio - Cleanup remove sal
+[Na]OC(=O)c1ccccc1,Sais/Solventes,Sais/Solventes,Sal de #U00e1cido benz#U00f3ico - FragmentParent
+C[NH+](C)(C).[Cl-],Sais/Solventes,Sais/Solventes,Sal de am#U00f4nio - ChargeParent neutraliza
+[O-]CCCC=CO.[Na+],Sais/Solventes,Sais/Solventes,Alc#U00f3xido com Na+ - TautomerParent
+[OH2],Sais/Solventes,Sais/Solventes,#U00c1gua - solvente ChEMBL
+CS(=O)C,Sais/Solventes,Sais/Solventes,DMSO - solvente ChEMBL
+CC(=O)C,Sais/Solventes,Sais/Solventes,Acetona - solvente ChEMBL
+CCO,Sais/Solventes,Sais/Solventes,Etanol - solvente ChEMBL
+CO,Sais/Solventes,Sais/Solventes,Metanol - solvente ChEMBL
+ClC(Cl)Cl,Sais/Solventes,Sais/Solventes,Clorof#U00f3rmio - solvente halogenado
+ClCCl,Sais/Solventes,Sais/Solventes,Diclorometano - solvente halogenado
+CCOC(=O)C,Sais/Solventes,Sais/Solventes,Acetato de etila - solvente #U00e9ster
+CC(C)O,Sais/Solventes,Sais/Solventes,Isopropanol - solvente
+CN(C)C.Cl.Cl.Br,Sais/Solventes,Sais/Solventes,M#U00faltiplos fragmentos - LargestFragmentChooser
+C[n+]1c([N-](C))cccc1,MolVS,MolVS,Forma carregada - standardize MolVS
+[Na]OC(=O)c1ccc(C[S+2]([O-])([O-]))cc1,MolVS,MolVS,Sulf#U00f4nio carregado - standardize RDKit/MolVS
+CN(=O)=O,MolVS,MolVS,Nitro como N=O - normaliza#U00e7#U00e3o MolVS
+C1=CC=CN(=O)=C1,MolVS,MolVS,Nitro arom#U00e1tico mal desenhado - MolVS
+O=C([O-])c1ccccc1,MolVS,MolVS,Benzoato - NeutralValidation warning (-1)
+[2H]C(Cl)(Cl)Cl,MolVS,MolVS,Deut#U00e9rio em clorof#U00f3rmio - IsotopeValidation
+[Cu+2],Edge,Edge Case,#U00cdon met#U00e1lico isolado - valida#U00e7#U00e3o de fragmento
+[Na+].[Cl-],Edge,Edge Case,NaCl dissociado - apenas sais inorg#U00e2nicos
+C1=CC=CC=C1.C1=CC=CC=C1,Edge,Edge Case,Dois benzenos - fragmentos id#U00eanticos
+C(C(=O)O)(C(=O)O)(C(=O)O)C(=O)O,Edge,Edge Case,#U00c1cido multidentado - m#U00faltiplos grupos ioniz#U00e1veis
+[H]C1=C(C(=C(C(=C1[H])[H])[H])[H])[H],Edge,Edge Case,Benzeno com H expl#U00edcitos - teste de hidrog#U00eanios
+C=1C=CC=CC=1,Edge,Edge Case,SMILES com n#U00fameros de ring closure n#U00e3o pareados - parser error
+C%10C%10,Edge,Edge Case,Ring closure com dois d#U00edgitos - parser edge case
+C12CC3CC1C23,Edge,Edge Case,M#U00faltiplos ring closures - adamantano
+[NH4+],Edge,Edge Case,#U00cdon am#U00f4nio - carga +1 isolada
+[O-][O-],Edge,Edge Case,Per#U00f3xido dianion - valida#U00e7#U00e3o de carga/val#U00eancia
