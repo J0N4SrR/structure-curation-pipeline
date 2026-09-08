@@ -263,39 +263,84 @@ def render_workbench():
     # POPOVER: Opções de Download (ESCONDIDO)
     with col_dl:
         report: Optional[RunReport] = st.session_state.get("report")
-        with st.popover("📥", help="Opções de Download"):
+        with st.popover("📥", help="Opções de Download e Exportação"):
             st.markdown("##### 📥 Exportar Resultados")
-            if report:
+            
+            if report and report.records:
+                # 1. Escolha do Dataset Base
+                target_dataset = st.radio(
+                    "Base:",
+                    ["Aprovadas", "Rejeitadas", "Auditoria Completa"],
+                    horizontal=True,
+                    label_visibility="collapsed"
+                )
+
+                # Carrega o DataFrame correspondente
+                import pandas as pd
+                if target_dataset == "Aprovadas":
+                    base_records = report.approved
+                    default_min = ["input_id", "curated_smiles", "inchikey"]
+                elif target_dataset == "Rejeitadas":
+                    base_records = report.rejected
+                    default_min = ["input_id", "raw_smiles", "rejection_code", "rejection_stage"]
+                else:
+                    base_records = report.records
+                    default_min = ["input_id", "curated_smiles", "status", "rejection_code"]
+
+                # Converte para DataFrame em memória
+                df_export = pd.DataFrame([r.model_dump(mode="json") for r in base_records])
+
+                # 2. Seletor de Escopo de Colunas
+                scope = st.segmented_control(
+                    "Colunas:",
+                    options=["Mínimo", "Completo", "Personalizado"],
+                    default="Mínimo"
+                )
+
+                if scope == "Mínimo":
+                    cols = [c for c in default_min if c in df_export.columns]
+                elif scope == "Completo":
+                    cols = df_export.columns.tolist()
+                else:
+                    cols = st.multiselect(
+                        "Selecione as colunas:",
+                        options=df_export.columns.tolist(),
+                        default=[c for c in default_min if c in df_export.columns]
+                    )
+
+                df_final = df_export[cols] if cols else df_export
+
+                # 3. Opção de Edição Rápida
+                edit_mode = st.toggle("✏️ Editar dados antes de baixar", value=False)
+                if edit_mode:
+                    df_final = st.data_editor(
+                        df_final,
+                        num_rows="dynamic",
+                        height=250,
+                        use_container_width=True
+                    )
+
+                # 4. Download do CSV customizado
+                csv_bytes = df_final.to_csv(index=False).encode("utf-8")
                 st.download_button(
-                    "📄 Dataset Curado (CSV)",
-                    to_csv(report.approved, ("input_id", "raw_smiles", "curated_smiles", "inchikey", "status")),
-                    file_name="curated_structures.csv",
+                    label=f"⬇️ Baixar CSV ({len(df_final)} mols)",
+                    data=csv_bytes,
+                    file_name=f"{target_dataset.lower()}_{scope.lower()}.csv",
                     mime="text/csv",
                     width="stretch"
                 )
-                st.download_button(
-                    "📄 Dataset Rejeitado (CSV)",
-                    rejected_csv(report),
-                    file_name="rejected_structures.csv",
-                    mime="text/csv",
-                    width="stretch"
-                )
-                st.download_button(
-                    "📊 Log de Auditoria Completo (CSV)",
-                    full_csv(report),
-                    file_name="audit_log.csv",
-                    mime="text/csv",
-                    width="stretch"
-                )
+
+                st.divider()
+                # Pacote completo de reprodutibilidade mantido para conformidade científica
                 st.download_button(
                     "📦 Pacote de Reprodutibilidade (ZIP)",
                     reproducibility_package(report),
-                    file_name=f"curation_{report.provenance.run_id[:8]}.zip",
+                    file_name=f"curation_pkg_{report.provenance.run_id[:8]}.zip",
                     mime="application/zip",
                     width="stretch"
                 )
             else:
-                st.caption("Execute o pipeline para disponibilizar downloads.")
+                st.caption("Execute o pipeline para habilitar as opções de exportação.")
 
     with col_run:
         can_run = st.session_state.get("raw_input") is not None
