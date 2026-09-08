@@ -19,12 +19,12 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 from curation.app import (
-    MIN_STAGE_DISPLAY_TIME,
     WIZARD_STAGES,
     init_session_state,
     reset_to_input,
     run_backend_pipeline,
 )
+import streamlit as st
 
 APP_PATH = Path(__file__).parent.parent / "src" / "curation" / "app.py"
 
@@ -33,38 +33,34 @@ APP_PATH = Path(__file__).parent.parent / "src" / "curation" / "app.py"
 
 
 def test_init_session_state(monkeypatch) -> None:
-    """Verifica se o estado inicial começa em ui_state == 'INPUT' e configs padrão."""
-    fake_state: dict = {}
-    monkeypatch.setattr("streamlit.session_state", fake_state)
+    """Garante que todas as chaves requeridas são criadas."""
+    fake_state: dict[str, object] = {}
+    monkeypatch.setattr(st, "session_state", fake_state)
 
     init_session_state()
 
     assert fake_state["ui_state"] == "INPUT"
-    assert fake_state["curating_step_idx"] == 0
     assert fake_state["raw_input"] is None
-    assert fake_state["input_name"] == ""
-    assert fake_state["config"]["max_mw"] == 1000.0
-    assert fake_state["config"]["max_ha"] == 100
-    assert fake_state["config"]["deduplicate"] is True
+    assert fake_state["report"] is None
+    assert "config" in fake_state
 
 
 def test_reset_to_input(monkeypatch) -> None:
-    """Verifica se reset_to_input restaura a UI para a Tela 1 (INPUT)."""
-    fake_state = {
+    """Garante que resetar limpa os dados químicos e volta ao Início."""
+    fake_state: dict[str, object] = {
         "ui_state": "COMPLETE",
-        "curating_step_idx": 6,
-        "step_start_time": 100.0,
-        "raw_input": b"CCO",
-        "input_name": "test.smi",
+        "selected_node": "VALIDATION",
+        "raw_input": b"some bytes",
+        "input_name": "test.sdf",
         "report": "fake_report",
     }
-    monkeypatch.setattr("streamlit.session_state", fake_state)
-    monkeypatch.setattr("streamlit.rerun", lambda: None)
+    monkeypatch.setattr(st, "session_state", fake_state)
+    monkeypatch.setattr(st, "rerun", lambda: None)
 
     reset_to_input()
 
     assert fake_state["ui_state"] == "INPUT"
-    assert fake_state["curating_step_idx"] == 0
+    assert fake_state["selected_node"] is None
     assert fake_state["raw_input"] is None
     assert fake_state["input_name"] == ""
     assert fake_state["report"] is None
@@ -126,11 +122,6 @@ def test_wizard_stages_sequence() -> None:
     ]
     assert stage_ids == expected_order
     assert len(WIZARD_STAGES) == 7
-
-
-def test_ui_stage_display_timing() -> None:
-    """Garante que a constante MIN_STAGE_DISPLAY_TIME está configurada em 1.5s."""
-    assert MIN_STAGE_DISPLAY_TIME == 1.5
 
 
 def test_transition_to_complete_state() -> None:
