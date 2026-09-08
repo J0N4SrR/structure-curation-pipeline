@@ -14,64 +14,14 @@ from streamlit_flow.state import StreamlitFlowState
 from curation.reporting import StageStatus
 from curation.viewmodel import GraphContract
 
-#: Dimensoes fixas para simular o layout anterior
-NODE_WIDTH = 250
-NODE_HEIGHT = 100
-NODE_GAP = 46
-PADDING = 12
-
-#: Cor por status para bordas/backgrounds
-STATUS_COLORS: dict[StageStatus, str] = {
-    StageStatus.PENDING: "#9aa0a6",
-    StageStatus.RUNNING: "#1a73e8",
-    StageStatus.SUCCESS: "#1e8e3e",
-    StageStatus.WARNING: "#b06000",
-    StageStatus.FAILED: "#d93025",
-    StageStatus.SKIPPED: "#9aa0a6",
+STATUS_BORDER_COLORS: dict[StageStatus, str] = {
+    StageStatus.SUCCESS: "#10B981",   # Emerald 500
+    StageStatus.WARNING: "#F59E0B",   # Amber 500
+    StageStatus.FAILED: "#EF4444",    # Rose 500
+    StageStatus.RUNNING: "#3B82F6",   # Blue 500
+    StageStatus.PENDING: "#475569",   # Slate 630
+    StageStatus.SKIPPED: "#334155",   # Slate 700
 }
-
-def build_flow(graph: GraphContract) -> tuple[list[StreamlitFlowNode], list[StreamlitFlowEdge]]:
-    """Converte o GraphContract para nós e arestas do streamlit-flow."""
-    nodes = []
-    
-    for index, node in enumerate(graph.nodes):
-        # Layout vertical empilhado
-        x = PADDING
-        y = PADDING + index * (NODE_HEIGHT + NODE_GAP)
-        
-        # Mapeando os contadores de aprovação/rejeição no label
-        counts_info = f"({node.output_count} saídas)"
-        if node.rejected_count > 0:
-            counts_info = f"({node.output_count} saídas | {node.rejected_count} rej.)"
-            
-        label = f"{node.glyph} {node.label}\n{node.status_text}\n{counts_info}"
-        
-        color = STATUS_COLORS.get(node.status, "#475569")
-        
-        nodes.append(
-            StreamlitFlowNode(
-                id=node.id,
-                pos=(x, y),
-                data={"label": label},
-                node_type="default",
-                style={
-                    "background": "#1E293B", 
-                    "color": "#F8FAFC", 
-                    "border": f"2px solid {color}", 
-                    "padding": "10px", 
-                    "borderRadius": "8px", 
-                    "width": f"{NODE_WIDTH}px",
-                    "whiteSpace": "pre-wrap"
-                }
-            )
-        )
-        
-    edges = [
-        StreamlitFlowEdge(id=f"{e.source}-{e.target}", source=e.source, target=e.target, animated=True)
-        for e in graph.edges
-    ]
-    
-    return nodes, edges
 
 def render_dag(
     graph: GraphContract,
@@ -85,10 +35,56 @@ def render_dag(
         O ``id`` do nó selecionado pelo usuário, ou ``selected`` quando nada foi
         clicado. Preserva a seleção anterior se o clique for fora do nó.
     """
-    nodes, edges = build_flow(graph)
+    flow_nodes = []
     
-    state = StreamlitFlowState(nodes=nodes, edges=edges, selected_id=selected)
-    
+    # Layout horizontal linear com espaçamento fixo e limpo
+    x_offset = 50
+    y_pos = 120
+    spacing = 220
+
+    for i, node in enumerate(graph.nodes):
+        border_color = STATUS_BORDER_COLORS.get(node.status, "#475569")
+        is_selected = (node.id == selected)
+
+        # Label científico enxuto
+        content = (
+            f"**[{node.id}]**\n\n"
+            f"`In: {node.input_count} | Out: {node.output_count}`\n\n"
+            f"`Rej: {node.rejected_count}`"
+        )
+
+        flow_nodes.append(
+            StreamlitFlowNode(
+                id=node.id,
+                pos=(x_offset + (i * spacing), y_pos),
+                data={"label": content},
+                node_type="default",
+                style={
+                    "background": "#0F172A",
+                    "color": "#F8FAFC",
+                    "border": f"{'2px' if is_selected else '1px'} solid {border_color}",
+                    "borderRadius": "6px",
+                    "padding": "10px 14px",
+                    "fontFamily": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                    "fontSize": "11px",
+                    "boxShadow": "0 4px 6px -1px rgba(0, 0, 0, 0.3)" if is_selected else "none",
+                }
+            )
+        )
+
+    flow_edges = [
+        StreamlitFlowEdge(
+            id=f"{edge.source}->{edge.target}",
+            source=edge.source,
+            target=edge.target,
+            animated=True,
+            style={"stroke": "#64748B", "strokeWidth": 2}
+        )
+        for edge in graph.edges
+    ]
+
+    state = StreamlitFlowState(nodes=flow_nodes, edges=flow_edges, selected_id=selected)
+
     updated_state = streamlit_flow(
         key=key,
         state=state,

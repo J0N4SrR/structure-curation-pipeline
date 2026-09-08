@@ -295,68 +295,56 @@ def render_input_screen() -> None:
 
     st.divider()
 
-    st.markdown("### Configuração do Pipeline")
-    st.caption("Ajuste os parâmetros de corte químico e deduplicação para a execução.")
+    # Cabeçalho da ação com botão popover de configuração à direita
+    col_run_title, col_cfg_popover = st.columns([5, 1])
     
-    with st.expander("ℹ️ Ajuda Contextual (Regras Científicas)"):
-        st.markdown("""
-        - **Massa Molecular:** Limita a estrutura-mãe. Auxilia no foco em *small molecules*.
-        - **Átomos Pesados:** Remove estruturas excessivamente complexas ou oligômeros acidentais.
-        - **Deduplicação (InChIKey):** Duplicatas exatas na forma neutra são agregadas, mantendo apenas a primeira ocorrência.
-        """)
+    with col_run_title:
+        st.markdown("### Executar Pipeline")
+        st.caption(f"Política ativa: `{st.session_state['config']['policy_hash'][:16]}...`")
 
-    cfg_col1, cfg_col2, cfg_col3 = st.columns(3)
-
-    with cfg_col1:
-        cfg_mw = st.number_input(
-            "Massa Molecular Máx. (Da)",
-            min_value=50.0,
-            max_value=10000.0,
-            value=st.session_state["config"]["max_mw"],
-            step=50.0,
-            help="Massa molecular máxima permitida na estrutura-mãe.",
-        )
-    with cfg_col2:
-        cfg_ha = st.number_input(
-            "Átomos Pesados Máx.",
-            min_value=5,
-            max_value=1000,
-            value=st.session_state["config"]["max_ha"],
-            step=5,
-            help="Número máximo de átomos pesados permitidos.",
-        )
-    with cfg_col3:
+    with col_cfg_popover:
         st.markdown("<br>", unsafe_allow_html=True)
-        cfg_dedup = st.checkbox(
-            "Deduplicar por InChIKey",
-            value=st.session_state["config"]["deduplicate"],
-            help="Remove duplicatas exatas baseando-se no InChIKey completo.",
-        )
+        with st.popover("⚙️ Configurar", help="Ajustar parâmetros de corte e deduplicação"):
+            st.markdown("##### ⚙️ Parâmetros do Pipeline")
+            st.caption("Ajuste os filtros de aceitação antes de executar.")
+            
+            cfg_mw = st.number_input(
+                "Massa Molecular Máx. (Da)",
+                min_value=50.0,
+                max_value=10000.0,
+                value=st.session_state["config"]["max_mw"],
+                step=50.0,
+                help="Massa molecular máxima permitida na estrutura-mãe.",
+            )
+            cfg_ha = st.number_input(
+                "Átomos Pesados Máx.",
+                min_value=5,
+                max_value=1000,
+                value=st.session_state["config"]["max_ha"],
+                step=5,
+                help="Número máximo de átomos pesados permitidos.",
+            )
+            cfg_dedup = st.checkbox(
+                "Deduplicar por InChIKey",
+                value=st.session_state["config"]["deduplicate"],
+                help="Remove duplicatas exatas baseando-se no InChIKey completo.",
+            )
 
-    st.session_state["config"]["max_mw"] = float(cfg_mw)
-    st.session_state["config"]["max_ha"] = int(cfg_ha)
-    st.session_state["config"]["deduplicate"] = bool(cfg_dedup)
+            st.session_state["config"]["max_mw"] = float(cfg_mw)
+            st.session_state["config"]["max_ha"] = int(cfg_ha)
+            st.session_state["config"]["deduplicate"] = bool(cfg_dedup)
 
-    st.caption(f"**Política ativa (SHA-256):** `{st.session_state['config']['policy_hash'][:16]}...` (Arquivo: `{st.session_state['config']['policy_path']}`)")
-
-    st.divider()
-
-    st.markdown("### Executar")
-    st.caption("Inicie o pipeline automatizado de curadoria e padronização.")
-
-    btn_container = st.columns([1, 2, 1])
-    with btn_container[1]:
-        start_disabled = st.session_state["raw_input"] is None
-        if st.button(
-            "Iniciar Curadoria",
-            type="primary",
-            width="stretch",
-            disabled=start_disabled,
-            help="Clique para iniciar o pipeline de curadoria",
-        ):
-            run_backend_pipeline()
-            st.session_state["ui_state"] = "COMPLETE"
-            st.rerun()
+    start_disabled = st.session_state["raw_input"] is None
+    if st.button(
+        "🚀 Iniciar Curadoria",
+        type="primary",
+        width="stretch",
+        disabled=start_disabled,
+        help="Clique para iniciar o pipeline de curadoria",
+    ):
+        run_backend_pipeline()
+        st.session_state["ui_state"] = "COMPLETE"
+        st.rerun()
 
 
 def run_backend_pipeline() -> None:
@@ -364,34 +352,58 @@ def run_backend_pipeline() -> None:
     name = st.session_state["input_name"]
     cfg = st.session_state["config"]
 
-    try:
-        pipeline = CurationPipeline(
-            policy_hash=cfg["policy_hash"],
-            criteria=EligibilityCriteria(
-                max_molecular_weight=cfg["max_mw"],
-                max_heavy_atoms=cfg["max_ha"],
-            ),
-            deduplicate=cfg["deduplicate"],
-        )
+    # Feedback de execução científico com pausas deliberadas
+    with st.status("Iniciando auditoria estrutural e curadoria...", expanded=True) as status:
+        st.write("`[1/6]` **PARSE:** Leitura sintática e verificação de integridade estrutural...")
+        time.sleep(0.4)
 
-        report = pipeline.run_report(
-            raw.decode("utf-8", errors="replace"),
-            parameters={
-                "max_mw": cfg["max_mw"],
-                "max_ha": cfg["max_ha"],
-                "deduplicate": cfg["deduplicate"],
-            },
-            input_bytes=raw,
-            input_name=name,
-            policy_path=cfg["policy_path"],
-        )
-        st.session_state["report"] = report
-    except Exception as e:
-        st.error(f"Falha crítica na execução do pipeline: {str(e)}")
-        st.exception(e)
-        st.session_state["report"] = None
-        st.stop()
+        st.write("`[2/6]` **STANDARDIZE:** Normalização de tautômeros, cargas e ligação metal-orgânico...")
+        time.sleep(0.5)
 
+        st.write("`[3/6]` **GET_PARENT:** Desassociação de sais, solventes e preservação de fragmento principal...")
+        time.sleep(0.5)
+
+        st.write("`[4/6]` **VALENCE_GATE:** Portão estrito de sanitização e verificação de valência pós-motor...")
+        time.sleep(0.4)
+
+        st.write("`[5/6]` **ELIGIBILITY:** Aplicação dos critérios de corte de MW e átomos pesados...")
+        time.sleep(0.3)
+
+        st.write("`[6/6]` **CANONICALIZE & DEDUP:** Atribuição estereoquímica, InChIKey e deduplicação...")
+        time.sleep(0.4)
+
+        try:
+            pipeline = CurationPipeline(
+                policy_hash=cfg["policy_hash"],
+                criteria=EligibilityCriteria(
+                    max_molecular_weight=cfg["max_mw"],
+                    max_heavy_atoms=cfg["max_ha"],
+                ),
+                deduplicate=cfg["deduplicate"],
+            )
+
+            report = pipeline.run_report(
+                raw.decode("utf-8", errors="replace"),
+                parameters={
+                    "max_mw": cfg["max_mw"],
+                    "max_ha": cfg["max_ha"],
+                    "deduplicate": cfg["deduplicate"],
+                },
+                input_bytes=raw,
+                input_name=name,
+                policy_path=cfg["policy_path"],
+            )
+            st.session_state["report"] = report
+            if hasattr(status, "update"):
+                status.update(label="✓ Curadoria concluída e audit log gerado com sucesso!", state="complete", expanded=False)
+            time.sleep(0.3)
+        except Exception as e:
+            if hasattr(status, "update"):
+                status.update(label="✕ Falha na execução do pipeline", state="error", expanded=True)
+            st.error(f"Falha crítica: {str(e)}")
+            st.exception(e)
+            st.session_state["report"] = None
+            st.stop()
 
 
 # --- TELA 2: RESULT (VER PIPELINE -> ENTENDER -> INVESTIGAR -> BAIXAR -> REPRODUZIR) --
@@ -686,15 +698,57 @@ def render_results_screen() -> None:
 
     if report:
         prov = report.provenance
-        # RUN HEADER (Fases 4 + 9)
-        top_bar_col1, top_bar_col2 = st.columns([3, 1])
+        # Top Bar com identificadores e ações compactas
+        top_bar_col1, top_bar_actions = st.columns([3, 2])
         with top_bar_col1:
-            st.markdown(f"## 🏆 Run Header: `{prov.run_id[:8]}`")
-            st.caption(f"**Execução concluída com sucesso.** Hash da Política de Curadoria ativa: `{prov.policy_hash[:16]}...`")
-        with top_bar_col2:
+            st.markdown(f"## 🏆 Run: `{prov.run_id[:8]}`")
+            st.caption(f"**Curadoria concluída.** Hash de Política: `{prov.policy_hash[:16]}...`")
+
+        with top_bar_actions:
             st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("Nova Análise", width="stretch", help="Reiniciar e carregar novas estruturas"):
-                reset_to_input()
+            act_col1, act_col2 = st.columns(2)
+            with act_col1:
+                # Popover de Downloads agregando todos os artefatos
+                with st.popover("📥 Downloads", help="Exportar datasets e pacote de auditoria"):
+                    st.markdown("##### 📥 Opções de Exportação")
+                    st.caption("Arquivos derivados desta execução:")
+                    
+                    st.download_button(
+                        "📄 Dataset Curado (CSV)",
+                        to_csv(report.approved, ("input_id", "raw_smiles", "curated_smiles", "inchikey", "status")),
+                        file_name="curated_structures.csv",
+                        mime="text/csv",
+                        width="stretch",
+                        key="exp_cur_popover"
+                    )
+                    st.download_button(
+                        "📄 Dataset Rejeitado (CSV)",
+                        rejected_csv(report),
+                        file_name="rejected_structures.csv",
+                        mime="text/csv",
+                        width="stretch",
+                        key="exp_rej_popover"
+                    )
+                    st.download_button(
+                        "📊 Log de Auditoria Completo (CSV)",
+                        full_csv(report),
+                        file_name="audit_log.csv",
+                        mime="text/csv",
+                        width="stretch",
+                        key="exp_aud_popover"
+                    )
+                    st.download_button(
+                        "📦 Pacote de Reprodutibilidade (ZIP)",
+                        reproducibility_package(report),
+                        file_name=f"curation_run_{report.provenance.run_id[:8]}.zip",
+                        mime="application/zip",
+                        width="stretch",
+                        key="exp_zip_popover"
+                    )
+
+            with act_col2:
+                if st.button("🔄 Nova Análise", width="stretch", help="Reiniciar e carregar novas estruturas"):
+                    reset_to_input()
         
         # Render Stepper (Fase 3)
         render_stepper("OUTPUT")
