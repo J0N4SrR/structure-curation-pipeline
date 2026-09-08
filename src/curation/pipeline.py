@@ -211,6 +211,7 @@ class CurationPipeline:
         from curation.provenance import RunProvenance
         from curation.reporting import build_run_report, finalize
 
+        from curation.io import read_input
         records_in = list(read_input(source))
         raw = input_bytes if input_bytes is not None else b""
         provenance = RunProvenance.start(
