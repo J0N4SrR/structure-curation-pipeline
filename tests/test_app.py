@@ -326,8 +326,15 @@ def test_unknown_node_id_from_the_browser_is_discarded() -> None:
         CurationPipeline("0" * 64).run_report(source, input_bytes=source.encode())
     ).graph
 
-    with patch.object(dag, "_component", return_value="NO_INEXISTENTE"):
+    from unittest.mock import patch, MagicMock
+
+    with patch.object(dag, "streamlit_flow") as mock_flow:
+        mock_state = MagicMock()
+        mock_state.selected_id = "NO_INEXISTENTE"
+        mock_flow.return_value = mock_state
         assert dag.render_dag(graph, selected="PARSE") == "PARSE"
 
-    with patch.object(dag, "_component", return_value="ELIGIBILITY"):
+        mock_state2 = MagicMock()
+        mock_state2.selected_id = "ELIGIBILITY"
+        mock_flow.return_value = mock_state2
         assert dag.render_dag(graph, selected="PARSE") == "ELIGIBILITY"
