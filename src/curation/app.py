@@ -56,37 +56,37 @@ DEFAULT_DECISIONS = Path("docs/decisions.md")
 WIZARD_STAGES = [
     {
         "id": "INPUT",
-        "title": "Input",
+        "title": "Recepção",
         "description": "Recepção e triagem inicial do lote de estruturas.",
     },
     {
         "id": "STANDARDIZATION",
-        "title": "Standardization",
+        "title": "Padronização",
         "description": "Normalização de grupos funcionais, cargas e aromaticidade.",
     },
     {
         "id": "PARENT",
-        "title": "Parent Structure",
+        "title": "Estrutura-Mãe",
         "description": "Isolamento da estrutura-mãe (remoção de sais e solventes).",
     },
     {
         "id": "VALIDATION",
-        "title": "Validation",
+        "title": "Validação",
         "description": "Validação de integridade química e portão de valência.",
     },
     {
         "id": "DEDUPLICATION",
-        "title": "Deduplication",
+        "title": "Deduplicação",
         "description": "Identificação de duplicatas por InChIKey completo.",
     },
     {
         "id": "ELIGIBILITY",
-        "title": "Eligibility",
+        "title": "Elegibilidade",
         "description": "Filtros de massa molecular e número de átomos pesados.",
     },
     {
         "id": "OUTPUT",
-        "title": "Output",
+        "title": "Saída",
         "description": "Geração do dataset canônico final e estatísticas.",
     },
 ]
@@ -258,7 +258,7 @@ def render_input_screen() -> None:
 
     with tab_file:
         uploaded = st.file_uploader(
-            "Upload file",
+            "Enviar arquivo",
             type=["csv", "tsv", "smi", "smiles", "txt"],
             label_visibility="collapsed",
             help="Envie um arquivo contendo estruturas químicas (.csv, .tsv, .smi)",
@@ -297,6 +297,13 @@ def render_input_screen() -> None:
 
     st.markdown("### Configuração do Pipeline")
     st.caption("Ajuste os parâmetros de corte químico e deduplicação para a execução.")
+    
+    with st.expander("ℹ️ Ajuda Contextual (Regras Científicas)"):
+        st.markdown("""
+        - **Massa Molecular:** Limita a estrutura-mãe. Auxilia no foco em *small molecules*.
+        - **Átomos Pesados:** Remove estruturas excessivamente complexas ou oligômeros acidentais.
+        - **Deduplicação (InChIKey):** Duplicatas exatas na forma neutra são agregadas, mantendo apenas a primeira ocorrência.
+        """)
 
     cfg_col1, cfg_col2, cfg_col3 = st.columns(3)
 
@@ -341,7 +348,7 @@ def render_input_screen() -> None:
     with btn_container[1]:
         start_disabled = st.session_state["raw_input"] is None
         if st.button(
-            "Start curation",
+            "Iniciar Curadoria",
             type="primary",
             width="stretch",
             disabled=start_disabled,
@@ -357,77 +364,85 @@ def run_backend_pipeline() -> None:
     name = st.session_state["input_name"]
     cfg = st.session_state["config"]
 
-    pipeline = CurationPipeline(
-        policy_hash=cfg["policy_hash"],
-        criteria=EligibilityCriteria(
-            max_molecular_weight=cfg["max_mw"],
-            max_heavy_atoms=cfg["max_ha"],
-        ),
-        deduplicate=cfg["deduplicate"],
-    )
+    try:
+        pipeline = CurationPipeline(
+            policy_hash=cfg["policy_hash"],
+            criteria=EligibilityCriteria(
+                max_molecular_weight=cfg["max_mw"],
+                max_heavy_atoms=cfg["max_ha"],
+            ),
+            deduplicate=cfg["deduplicate"],
+        )
 
-    report = pipeline.run_report(
-        raw.decode("utf-8", errors="replace"),
-        parameters={
-            "max_mw": cfg["max_mw"],
-            "max_ha": cfg["max_ha"],
-            "deduplicate": cfg["deduplicate"],
-        },
-        input_bytes=raw,
-        input_name=name,
-        policy_path=cfg["policy_path"],
-    )
-    st.session_state["report"] = report
+        report = pipeline.run_report(
+            raw.decode("utf-8", errors="replace"),
+            parameters={
+                "max_mw": cfg["max_mw"],
+                "max_ha": cfg["max_ha"],
+                "deduplicate": cfg["deduplicate"],
+            },
+            input_bytes=raw,
+            input_name=name,
+            policy_path=cfg["policy_path"],
+        )
+        st.session_state["report"] = report
+    except Exception as e:
+        st.error(f"Falha crítica na execução do pipeline: {str(e)}")
+        st.exception(e)
+        st.session_state["report"] = None
+        st.stop()
+
 
 
 # --- TELA 2: RESULT (VER PIPELINE -> ENTENDER -> INVESTIGAR -> BAIXAR -> REPRODUZIR) --
 
 
 
+def render_stepper(current_stage_id: str = "OUTPUT") -> None:
+    st.markdown("---")
+    st.caption("**Progresso da Curadoria (Wizard)**")
+    
+    try:
+        current_idx = next(i for i, s in enumerate(WIZARD_STAGES) if s["id"] == current_stage_id)
+    except StopIteration:
+        current_idx = len(WIZARD_STAGES) - 1
+
+    cols = st.columns(len(WIZARD_STAGES))
+    for i, (col, stage) in enumerate(zip(cols, WIZARD_STAGES)):
+        color = "#1e8e3e" if i < current_idx else "#1a73e8" if i == current_idx else "#70757a"
+        weight = "800" if i == current_idx else "400"
+        with col:
+            st.markdown(f"<div style='text-align: center; color: {color}; font-weight: {weight}; font-size: 0.8rem;'>{i+1}. {stage['title']}</div>", unsafe_allow_html=True)
+    
+    st.progress(current_idx / max(1, len(WIZARD_STAGES) - 1))
+    st.markdown("---")
+
 def render_run_details(view: RunViewModel, report: RunReport) -> None:
     """Resumo global, exibido quando nenhum no esta selecionado."""
-    st.markdown(f"#### Detalhes da execucao {view.glyph} {view.status_text}")
+    st.markdown(f"#### Detalhes da Execução {view.glyph} {view.status_text}")
     st.caption(
-        "Nenhum estagio selecionado. Clique em um no do grafo para ver o que "
+        "Nenhum estágio selecionado. Clique em um nó do grafo para ver o que "
         "aconteceu nele."
     )
     
-    tab_overview, tab_lineage, tab_exports = st.tabs(["Overview & Proveniência", "Structure Lineage", "Exportar Dados"])
+    tab_overview, tab_lineage, tab_exports = st.tabs(["Visão Geral", "Linhagem de Estruturas", "Exportar Dados"])
     
     with tab_overview:
         a, b, c, d = st.columns(4)
         a.metric("Entrada", view.input_count, help="Total de estruturas químicas processadas nesta execução.")
         b.metric("Aprovadas", view.approved, help="Total de estruturas que passaram por todos os testes e estão no dataset final.")
         c.metric("Rejeitadas", view.rejected, help="Total de estruturas reprovadas e enviadas para o dataset rejeitado.")
-        d.metric("Taxa de aprovacao", f"{view.approval_rate:.0%}", help="Porcentagem de estruturas processadas que foram aprovadas.")
+        d.metric("Taxa de Aprovação", f"{view.approval_rate:.0%}", help="Porcentagem de estruturas processadas que foram aprovadas.")
 
         e, f, g = st.columns(3)
         e.metric("Transformadas", view.transformed, help="Número de estruturas cujos átomos, ligações ou cargas foram modificados.")
         f.metric("Duplicatas", view.duplicates, help="Número de duplicatas estruturais exatas encontradas (baseado no InChIKey).")
         g.metric(
-            "Duracao",
+            "Duração",
             f"{view.duration_seconds:.2f} s" if view.duration_seconds else "-",
             help="Tempo real (wall-clock time) para executar todos os estágios do pipeline."
         )
-        
-        st.markdown("---")
-        st.markdown("#### Proveniência da Execução")
-        prov = report.provenance
-        st.markdown(f"**Run ID:** `{prov.run_id}`")
-        st.markdown(f"**Política (SHA-256):** `{prov.policy_hash[:16]}...`")
-        
-        with st.expander("Ambiente e Versões"):
-            st.json(prov.versions)
-            st.json(prov.environment)
-            if prov.git.commit != "unavailable":
-                st.markdown(f"**Git Commit:** `{prov.git.commit}` (Dirty: {prov.git.dirty})")
 
-        with st.expander("Comando de Reprodução (CLI)"):
-            st.code(prov.reproduction_command(input_path=prov.input_name), language="bash")
-            if not prov.reproducible:
-                st.warning("Esta execução possui bloqueadores de reprodução exata:")
-                for blocker in prov.reproduction_blockers():
-                    st.markdown(f"- {blocker}")
 
     with tab_lineage:
         render_structure_lineage(report)
@@ -505,19 +520,25 @@ def render_structure_lineage(report: RunReport) -> None:
         else:
             st.info("Estrutura não possui SMILES curado (foi rejeitada).")
 
-    st.markdown("##### Linhagem de Transformações por Estágio")
+    st.markdown("##### 🧬 Linhagem de Transformações (Timeline)")
     if selected_rec.transformations:
-        trans_rows = [
-            {
-                "Estágio": t.stage.value,
-                "Regra": t.rule,
-                "Antes": t.before_smiles,
-                "Depois": t.after_smiles,
-                "Detalhes": t.detail,
-            }
-            for t in selected_rec.transformations
-        ]
-        st.dataframe(trans_rows, width="stretch", hide_index=True)
+        for idx, t in enumerate(selected_rec.transformations):
+            with st.expander(f"Step {idx+1}: {t.stage.value} — {t.rule}", expanded=True):
+                if t.detail:
+                    st.info(t.detail)
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.markdown("**Antes:**")
+                    st.code(t.before_smiles, language="text")
+                    img_b = render_mol_image(t.before_smiles, size=(200, 200))
+                    if img_b:
+                        st.image(img_b, width=200)
+                with c2:
+                    st.markdown("**Depois:**")
+                    st.code(t.after_smiles, language="text")
+                    img_a = render_mol_image(t.after_smiles, size=(200, 200))
+                    if img_a:
+                        st.image(img_a, width=200)
     else:
         st.caption("Nenhuma transformação alterou a conectividade desta molécula.")
 
@@ -530,58 +551,45 @@ def render_structure_lineage(report: RunReport) -> None:
 
 
 def render_exports(report: RunReport) -> None:
-    st.caption("Exporte os datasets curados, rejeitados, logs de auditoria e manifesto completo.")
-    d_col1, d_col2 = st.columns(2)
+    st.markdown("#### Artefatos de Saída")
+    st.caption("Todos os dados gerados pelo pipeline estão disponíveis para download imediato em múltiplos formatos.")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.markdown("**Dataset Curado**")
+        st.caption("Moléculas aprovadas e deduplicadas.")
+        st.download_button("📥 CSV", to_csv(report.approved, ("input_id", "raw_smiles", "curated_smiles", "inchikey", "status")), file_name="curated_structures.csv", mime="text/csv", width="stretch", key="exp_cur")
+    
+    with col2:
+        st.markdown("**Dataset Rejeitado**")
+        st.caption("Moléculas descartadas e motivos.")
+        st.download_button("📥 CSV", rejected_csv(report), file_name="rejected_structures.csv", mime="text/csv", width="stretch", key="exp_rej")
 
-    with d_col1:
-        st.download_button(
-            "Dataset Curado (CSV)",
-            to_csv(report.approved, ("input_id", "raw_smiles", "curated_smiles", "inchikey", "status")),
-            file_name="curated_structures.csv",
-            mime="text/csv",
-            width="stretch",
-            help="Arquivo contendo as moléculas finais, normalizadas e deduplicadas.",
-        )
-        st.download_button(
-            "Log de Auditoria (CSV)",
-            full_csv(report),
-            file_name="audit_log.csv",
-            mime="text/csv",
-            width="stretch",
-            help="Relatório detalhado contendo a trajetória completa e status de cada molécula.",
-        )
-    with d_col2:
-        st.download_button(
-            "Dataset Rejeitado (CSV)",
-            rejected_csv(report),
-            file_name="rejected_structures.csv",
-            mime="text/csv",
-            width="stretch",
-            help="Arquivo contendo as moléculas descartadas e os motivos da rejeição.",
-        )
-        st.download_button(
-            "Pacote Completo (ZIP)",
-            reproducibility_package(report),
-            file_name=f"curation_run_{report.provenance.run_id[:8]}.zip",
-            mime="application/zip",
-            width="stretch",
-            help="Arquivo ZIP com todos os datasets, relatório consolidado em JSON e o registro das políticas aplicadas.",
-        )
+    with col3:
+        st.markdown("**Log de Auditoria**")
+        st.caption("Registro de transformações.")
+        st.download_button("📥 CSV", full_csv(report), file_name="audit_log.csv", mime="text/csv", width="stretch", key="exp_aud")
+
+    with col4:
+        st.markdown("**Pacote Completo**")
+        st.caption("ZIP com manifesto e proveniência.")
+        st.download_button("📦 ZIP", reproducibility_package(report), file_name=f"curation_run_{report.provenance.run_id[:8]}.zip", mime="application/zip", width="stretch", key="exp_zip")
     
     st.markdown("---")
-    st.markdown("#### Proveniência da Execução")
+    st.markdown("#### Reprodutibilidade e Manifesto")
     prov = report.provenance
-    st.markdown(f"**Run ID:** `{prov.run_id}`")
-    st.markdown(f"**Política (SHA-256):** `{prov.policy_hash[:16]}...`")
     
-    with st.expander("Ambiente e Versões"):
-        st.json(prov.versions)
-        st.json(prov.environment)
-        if prov.git.commit != "unavailable":
-            st.markdown(f"**Git Commit:** `{prov.git.commit}` (Dirty: {prov.git.dirty})")
-
-    with st.expander("Comando de Reprodução (CLI)"):
+    with st.expander("📦 Comando de Reprodução (CLI) e Ambiente", expanded=True):
         st.code(prov.reproduction_command(input_path=prov.input_name), language="bash")
+        
+        env_col1, env_col2 = st.columns(2)
+        with env_col1:
+            st.markdown("**Sistema**")
+            st.json(prov.environment)
+        with env_col2:
+            st.markdown("**Bibliotecas**")
+            st.json(prov.versions)
+            
         if not prov.reproducible:
             st.warning("Esta execução possui bloqueadores de reprodução exata:")
             for blocker in prov.reproduction_blockers():
@@ -676,16 +684,23 @@ def render_results_screen() -> None:
         st.session_state["ui_state"] = "COMPLETE"
         st.rerun()
 
-    top_bar_col1, top_bar_col2 = st.columns([3, 1])
-    with top_bar_col1:
-        st.title("Resultado da Curadoria")
-    with top_bar_col2:
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("Nova análise", width="stretch", help="Reiniciar e carregar novas estruturas"):
-            reset_to_input()
-
     if report:
+        prov = report.provenance
+        # RUN HEADER (Fases 4 + 9)
+        top_bar_col1, top_bar_col2 = st.columns([3, 1])
+        with top_bar_col1:
+            st.markdown(f"## 🏆 Run Header: `{prov.run_id[:8]}`")
+            st.caption(f"**Execução concluída com sucesso.** Hash da Política de Curadoria ativa: `{prov.policy_hash[:16]}...`")
+        with top_bar_col2:
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("Nova Análise", width="stretch", help="Reiniciar e carregar novas estruturas"):
+                reset_to_input()
+        
+        # Render Stepper (Fase 3)
+        render_stepper("OUTPUT")
+        
         render_pipeline_graph(report)
+
 
 
 # --- APLICAÇÃO PRINCIPAL -------------------------------------------------------------
