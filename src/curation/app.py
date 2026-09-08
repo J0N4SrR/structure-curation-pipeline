@@ -1,14 +1,7 @@
 """Interface Streamlit (Wizard UI) para o Structure Curation Pipeline.
 
-Organizada estritamente no fluxo em 8 etapas:
-1. CARREGAR
-2. CONFIGURAR
-3. EXECUTAR
-4. VER O PIPELINE
-5. ENTENDER O RESULTADO
-6. INVESTIGAR UMA ESTRUTURA
-7. BAIXAR OS DADOS
-8. REPRODUZIR A EXECUÇÃO
+Organizada como um Workspace contínuo, simulando a execução ao vivo do pipeline
+(estilo Kubeflow / Nextflow Tower).
 """
 
 from __future__ import annotations
@@ -31,7 +24,8 @@ except ImportError as _error:
     DRAWING_AVAILABLE = False
     DRAWING_ERROR = str(_error)
 
-from curation.components.dag import render_dag
+from streamlit_flow import streamlit_flow
+from curation.components.dag import build_live_dag_state, ORDERED_STAGES
 from curation.filters import EligibilityCriteria
 from curation.io import compute_policy_hash, preview_input
 from curation.pipeline import CurationPipeline
@@ -52,46 +46,6 @@ RDLogger.DisableLog("rdApp.*")
 
 DEFAULT_DECISIONS = Path("docs/decisions.md")
 
-
-WIZARD_STAGES = [
-    {
-        "id": "INPUT",
-        "title": "Recepção",
-        "description": "Recepção e triagem inicial do lote de estruturas.",
-    },
-    {
-        "id": "STANDARDIZATION",
-        "title": "Padronização",
-        "description": "Normalização de grupos funcionais, cargas e aromaticidade.",
-    },
-    {
-        "id": "PARENT",
-        "title": "Estrutura-Mãe",
-        "description": "Isolamento da estrutura-mãe (remoção de sais e solventes).",
-    },
-    {
-        "id": "VALIDATION",
-        "title": "Validação",
-        "description": "Validação de integridade química e portão de valência.",
-    },
-    {
-        "id": "DEDUPLICATION",
-        "title": "Deduplicação",
-        "description": "Identificação de duplicatas por InChIKey completo.",
-    },
-    {
-        "id": "ELIGIBILITY",
-        "title": "Elegibilidade",
-        "description": "Filtros de massa molecular e número de átomos pesados.",
-    },
-    {
-        "id": "OUTPUT",
-        "title": "Saída",
-        "description": "Geração do dataset canônico final e estatísticas.",
-    },
-]
-
-
 def render_mol_image(smiles: Optional[str], legend: str = "", size: tuple[int, int] = (250, 250)):
     """Gera uma imagem 2D da molécula via RDKit caso o RDKit esteja disponível."""
     if not smiles or not DRAWING_AVAILABLE or Draw is None:
@@ -103,7 +57,6 @@ def render_mol_image(smiles: Optional[str], legend: str = "", size: tuple[int, i
     except Exception:
         pass
     return None
-
 
 def inject_styles() -> None:
     st.markdown(
@@ -138,62 +91,12 @@ def inject_styles() -> None:
             opacity: 0.75;
             margin-bottom: 1rem;
           }
-          
-          /* Cards do Funil */
-          .wizard-card {
-            border: 1px solid rgba(128, 128, 128, 0.25);
-            border-radius: 10px;
-            padding: 1rem 1.2rem;
-            margin-bottom: 0.6rem;
-            background: rgba(255, 255, 255, 0.03);
-          }
-          @keyframes pulse-running {
-            0% { border-color: rgba(26, 115, 232, 0.4); box-shadow: 0 0 8px rgba(26, 115, 232, 0.15); }
-            50% { border-color: rgba(26, 115, 232, 0.9); box-shadow: 0 0 16px rgba(26, 115, 232, 0.35); }
-            100% { border-color: rgba(26, 115, 232, 0.4); box-shadow: 0 0 8px rgba(26, 115, 232, 0.15); }
-          }
-          .wizard-card-running {
-            animation: pulse-running 2s infinite ease-in-out;
-            background: rgba(26, 115, 232, 0.04);
-          }
-          .wizard-card-completed {
-            border-color: rgba(30, 142, 62, 0.45);
-            background: rgba(30, 142, 62, 0.02);
-          }
-          .status-badge {
-            font-weight: 700;
-            font-size: 1rem;
-            margin-right: 0.5rem;
-          }
-          .status-pending { color: #70757a; }
-          .status-running { color: #1a73e8; }
-          .status-success { color: #1e8e3e; }
-          .status-warning { color: #f29900; }
-          .status-failed { color: #d93025; }
-          .status-skipped { color: #5f6368; font-style: italic; }
-          
-          .summary-number {
-            font-size: 2.2rem;
-            font-weight: 800;
-            color: #1e8e3e;
-            letter-spacing: -0.02em;
-          }
-          .step-connector {
-            text-align: center;
-            font-size: 1.1rem;
-            opacity: 0.35;
-            margin: -0.3rem 0;
-          }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-
 def init_session_state() -> None:
-    if "ui_state" not in st.session_state:
-        st.session_state["ui_state"] = "INPUT"  # INPUT | CURATING | COMPLETE
-
     if "raw_input" not in st.session_state:
         st.session_state["raw_input"] = None
     if "input_name" not in st.session_state:
@@ -210,224 +113,225 @@ def init_session_state() -> None:
         }
     if "report" not in st.session_state:
         st.session_state["report"] = None
+    if "stage_live_states" not in st.session_state:
+        st.session_state["stage_live_states"] = {
+            s[0]: {"status": StageStatus.PENDING, "in": "-", "out": "-", "rej": "-"}
+            for s in ORDERED_STAGES
+        }
+    if "selected_node" not in st.session_state:
+        st.session_state["selected_node"] = None
+    if "run_view" not in st.session_state:
+        st.session_state["run_view"] = None
 
-
-def reset_to_input() -> None:
-    st.session_state["selected_node"] = None
-    st.session_state["ui_state"] = "INPUT"
-
-    st.session_state["raw_input"] = None
-    st.session_state["input_name"] = ""
-    st.session_state["report"] = None
-    st.rerun()
-
-
-# --- TELA 1: INPUT ------------------------------
-
-
-def render_input_screen() -> None:
-
-    st.markdown(
-        """
-        <div style='text-align: center; margin-bottom: 2rem;'>
-            <h1 style='font-size: 2.2rem; font-weight: 800; margin-bottom: 0.3rem;'>Structure Curation Pipeline</h1>
-            <p style='font-size: 1.05rem; opacity: 0.75;'>Curadoria química reprodutível, transparente e auditável</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
+def execute_pipeline_live(dag_container):
+    raw = st.session_state["raw_input"]
+    cfg = st.session_state["config"]
+    
+    pipeline = CurationPipeline(
+        policy_hash=cfg["policy_hash"],
+        criteria=EligibilityCriteria(max_molecular_weight=cfg["max_mw"], max_heavy_atoms=cfg["max_ha"]),
+        deduplicate=cfg["deduplicate"]
     )
 
-    st.markdown("### Lote de Estruturas")
-    st.caption("Forneça as estruturas químicas em formato SMILES para iniciar a execução do pipeline.")
+    # Inicializa todos como PENDING
+    states = {s[0]: {"status": StageStatus.PENDING, "in": "-", "out": "-", "rej": "-"} for s in ORDERED_STAGES}
 
-    tab_paste, tab_file = st.tabs(["Cole SMILES", "Upload de Arquivo"])
-    raw_bytes: Optional[bytes] = None
-    input_name = ""
+    # Executa a curadoria real para obter as métricas do motor
+    report = pipeline.run_report(
+        raw.decode("utf-8", errors="replace"),
+        parameters=cfg,
+        input_bytes=raw,
+        input_name=st.session_state["input_name"],
+        policy_path=cfg["policy_path"],
+    )
+    
+    stage_reports = {s.name: s for s in report.stages}
+    if report.dedup:
+        stage_reports["DEDUPLICATION"] = report.dedup
 
-    with tab_paste:
-        text = st.text_area(
-            "SMILES Input",
-            height=140,
-            placeholder="CCO\nCC(=O)O[Na]\nN[C@@H](C)C(=O)O.Cl\nc1ccccc1",
-            label_visibility="collapsed",
-            help="Cole um código SMILES por linha",
-        )
-        if text.strip():
-            raw_bytes = text.encode("utf-8")
-            input_name = "pasted_structures.smi"
+    # Animação passo a passo dos nós
+    for stage_id, label in ORDERED_STAGES:
+        # Marca estágio como RUNNING (Azul, pulsante, aresta animada)
+        states[stage_id]["status"] = StageStatus.RUNNING
+        with dag_container:
+            streamlit_flow("curation_live_dag", build_live_dag_state(states), height=360, fit_view=False)
+        
+        # Pausa cadenciada para percepção do processamento científico
+        time.sleep(0.6)
 
-    with tab_file:
-        uploaded = st.file_uploader(
-            "Enviar arquivo",
-            type=["csv", "tsv", "smi", "smiles", "txt"],
-            label_visibility="collapsed",
-            help="Envie um arquivo contendo estruturas químicas (.csv, .tsv, .smi)",
-        )
-        if uploaded is not None:
-            raw_bytes = uploaded.getvalue()
-            input_name = uploaded.name
-
-    if raw_bytes:
-        try:
-            preview = preview_input(raw_bytes.decode("utf-8", errors="replace"))
-            total_detected = preview.total
-        except Exception as e:
-            total_detected = 0
-
-        if total_detected > 0:
-            st.success(f"✓ **{input_name}** ({total_detected} moléculas detectadas)")
-            st.session_state["raw_input"] = raw_bytes
-            st.session_state["input_name"] = input_name
-
-            with st.expander("Pré-visualizar amostras", expanded=False):
-                try:
-                    lines = [line.strip() for line in raw_bytes.decode("utf-8", errors="replace").splitlines() if line.strip()]
-                    sample_rows = [{"#": i + 1, "Estrutura / SMILES": line} for i, line in enumerate(lines[:5])]
-                    st.dataframe(sample_rows, width="stretch", hide_index=True)
-                except Exception:
-                    st.caption("Pré-visualização não disponível.")
+        # Atualiza métricas reais e marca como SUCCESS / WARNING
+        rep = stage_reports.get(stage_id)
+        if rep:
+            status = StageStatus.WARNING if rep.has_exclusions else StageStatus.SUCCESS
+            states[stage_id] = {
+                "status": status,
+                "in": rep.n_input,
+                "out": rep.n_output,
+                "rej": rep.n_excluded
+            }
         else:
-            st.error(f"**Input inválido:** Não foi possível detectar estruturas válidas em '{input_name}'. Verifique o formato do arquivo.")
-            st.session_state["raw_input"] = None
-    else:
-        st.info("Nenhum input carregado. Cole SMILES ou faça upload de um arquivo para começar.")
-        st.session_state["raw_input"] = None
+            states[stage_id]["status"] = StageStatus.SUCCESS
 
-    st.divider()
+        with dag_container:
+            streamlit_flow("curation_live_dag", build_live_dag_state(states), height=360, fit_view=False)
 
-    # Cabeçalho da ação com botão popover de configuração à direita
-    col_run_title, col_cfg_popover = st.columns([5, 1])
-    
-    with col_run_title:
-        st.markdown("### Executar Pipeline")
-        st.caption(f"Política ativa: `{st.session_state['config']['policy_hash'][:16]}...`")
+    st.session_state["stage_live_states"] = states
+    st.session_state["report"] = report
+    st.session_state["run_view"] = build_run_view(report)
+    st.session_state["selected_node"] = None
+    st.rerun()
 
-    with col_cfg_popover:
-        st.markdown("<br>", unsafe_allow_html=True)
-        with st.popover("⚙️ Configurar", help="Ajustar parâmetros de corte e deduplicação"):
-            st.markdown("##### ⚙️ Parâmetros do Pipeline")
-            st.caption("Ajuste os filtros de aceitação antes de executar.")
-            
-            cfg_mw = st.number_input(
-                "Massa Molecular Máx. (Da)",
-                min_value=50.0,
-                max_value=10000.0,
-                value=st.session_state["config"]["max_mw"],
-                step=50.0,
-                help="Massa molecular máxima permitida na estrutura-mãe.",
+def render_workbench():
+    top_bar = st.container()
+
+    # 2. Área de Entrada de Dados (Expansível / Compacta)
+    with st.expander("📂 Ingestão de Moléculas (SMILES) ou Upload", expanded=(st.session_state.get("raw_input") is None)):
+        tab_paste, tab_file = st.tabs(["Cole SMILES", "Upload de Arquivo"])
+        raw_bytes: Optional[bytes] = None
+        input_name = ""
+
+        with tab_paste:
+            text = st.text_area(
+                "SMILES Input",
+                height=140,
+                placeholder="CCO\nCC(=O)O[Na]\nN[C@@H](C)C(=O)O.Cl\nc1ccccc1",
+                label_visibility="collapsed",
+                help="Cole um código SMILES por linha",
             )
-            cfg_ha = st.number_input(
-                "Átomos Pesados Máx.",
-                min_value=5,
-                max_value=1000,
-                value=st.session_state["config"]["max_ha"],
-                step=5,
-                help="Número máximo de átomos pesados permitidos.",
+            if text.strip():
+                raw_bytes = text.encode("utf-8")
+                input_name = "pasted_structures.smi"
+
+        with tab_file:
+            uploaded = st.file_uploader(
+                "Enviar arquivo",
+                type=["csv", "tsv", "smi", "smiles", "txt"],
+                label_visibility="collapsed",
+                help="Envie um arquivo contendo estruturas químicas (.csv, .tsv, .smi)",
             )
-            cfg_dedup = st.checkbox(
-                "Deduplicar por InChIKey",
-                value=st.session_state["config"]["deduplicate"],
-                help="Remove duplicatas exatas baseando-se no InChIKey completo.",
-            )
+            if uploaded is not None:
+                raw_bytes = uploaded.getvalue()
+                input_name = uploaded.name
 
-            st.session_state["config"]["max_mw"] = float(cfg_mw)
-            st.session_state["config"]["max_ha"] = int(cfg_ha)
-            st.session_state["config"]["deduplicate"] = bool(cfg_dedup)
+        if raw_bytes:
+            try:
+                preview = preview_input(raw_bytes.decode("utf-8", errors="replace"))
+                total_detected = preview.total
+            except Exception as e:
+                total_detected = 0
 
-    start_disabled = st.session_state["raw_input"] is None
-    if st.button(
-        "🚀 Iniciar Curadoria",
-        type="primary",
-        width="stretch",
-        disabled=start_disabled,
-        help="Clique para iniciar o pipeline de curadoria",
-    ):
-        run_backend_pipeline()
-        st.session_state["ui_state"] = "COMPLETE"
-        st.rerun()
+            if total_detected > 0:
+                st.success(f"✓ **{input_name}** ({total_detected} moléculas detectadas)")
+                st.session_state["raw_input"] = raw_bytes
+                st.session_state["input_name"] = input_name
+            else:
+                st.error(f"**Input inválido:** Não foi possível detectar estruturas válidas em '{input_name}'. Verifique o formato do arquivo.")
+                st.session_state["raw_input"] = None
+        elif st.session_state.get("raw_input") and not text.strip() and not uploaded:
+             st.success(f"✓ **{st.session_state['input_name']}** pronto para execução.")
 
+    with top_bar:
+        # 1. Barra de Ações Superior (Estilo Kubeflow Workspace)
+        col_info, col_cfg, col_dl, col_action = st.columns([5, 1, 1, 2])
+        
+        with col_info:
+            st.markdown("### ⚗️ Workspace de Curadoria Estrutural")
+            st.caption(f"Política Ativa: `{st.session_state['config']['policy_hash'][:16]}...`")
 
-def run_backend_pipeline() -> None:
-    raw = st.session_state["raw_input"]
-    name = st.session_state["input_name"]
-    cfg = st.session_state["config"]
+        # Ícone de Engrenagem (Configuração do Pipeline)
+        with col_cfg:
+            with st.popover("⚙️", help="Configurações e Parâmetros"):
+                st.markdown("##### ⚙️ Parâmetros do Estudo")
+                st.session_state["config"]["max_mw"] = st.number_input(
+                    "Massa Molecular Máx.", value=st.session_state["config"]["max_mw"]
+                )
+                st.session_state["config"]["max_ha"] = st.number_input(
+                    "Átomos Pesados Máx.", value=st.session_state["config"]["max_ha"]
+                )
+                st.session_state["config"]["deduplicate"] = st.checkbox(
+                    "Deduplicação InChIKey", value=st.session_state["config"]["deduplicate"]
+                )
 
-    # Feedback de execução científico com pausas deliberadas
-    with st.status("Iniciando auditoria estrutural e curadoria...", expanded=True) as status:
-        st.write("`[1/6]` **PARSE:** Leitura sintática e verificação de integridade estrutural...")
-        time.sleep(0.4)
+        # Ícone de Download (Artefatos da Execução)
+        with col_dl:
+            report = st.session_state.get("report")
+            with st.popover("📥", help="Opções de Download"):
+                st.markdown("##### 📥 Exportação de Artefatos")
+                if report:
+                    st.download_button(
+                        "📄 Dataset Curado (CSV)",
+                        to_csv(report.approved, ("input_id", "raw_smiles", "curated_smiles", "inchikey", "status")),
+                        file_name="curated_structures.csv",
+                        mime="text/csv",
+                        width="stretch"
+                    )
+                    st.download_button(
+                        "📄 Dataset Rejeitado (CSV)",
+                        rejected_csv(report),
+                        file_name="rejected_structures.csv",
+                        mime="text/csv",
+                        width="stretch"
+                    )
+                    st.download_button(
+                        "📊 Log de Auditoria (CSV)",
+                        full_csv(report),
+                        file_name="audit_log.csv",
+                        mime="text/csv",
+                        width="stretch"
+                    )
+                    st.download_button(
+                        "📦 Pacote ZIP",
+                        reproducibility_package(report),
+                        file_name=f"curation_pkg_{report.provenance.run_id[:8]}.zip",
+                        mime="application/zip",
+                        width="stretch"
+                    )
+                else:
+                    st.caption("Nenhum dado disponível. Execute o pipeline primeiro.")
 
-        st.write("`[2/6]` **STANDARDIZE:** Normalização de tautômeros, cargas e ligação metal-orgânico...")
-        time.sleep(0.5)
+        with col_action:
+            can_run = st.session_state.get("raw_input") is not None
+            run_btn = st.button("▶ Executar Pipeline", type="primary", disabled=not can_run, width="stretch")
 
-        st.write("`[3/6]` **GET_PARENT:** Desassociação de sais, solventes e preservação de fragmento principal...")
-        time.sleep(0.5)
-
-        st.write("`[4/6]` **VALENCE_GATE:** Portão estrito de sanitização e verificação de valência pós-motor...")
-        time.sleep(0.4)
-
-        st.write("`[5/6]` **ELIGIBILITY:** Aplicação dos critérios de corte de MW e átomos pesados...")
-        time.sleep(0.3)
-
-        st.write("`[6/6]` **CANONICALIZE & DEDUP:** Atribuição estereoquímica, InChIKey e deduplicação...")
-        time.sleep(0.4)
-
-        try:
-            pipeline = CurationPipeline(
-                policy_hash=cfg["policy_hash"],
-                criteria=EligibilityCriteria(
-                    max_molecular_weight=cfg["max_mw"],
-                    max_heavy_atoms=cfg["max_ha"],
-                ),
-                deduplicate=cfg["deduplicate"],
-            )
-
-            report = pipeline.run_report(
-                raw.decode("utf-8", errors="replace"),
-                parameters={
-                    "max_mw": cfg["max_mw"],
-                    "max_ha": cfg["max_ha"],
-                    "deduplicate": cfg["deduplicate"],
-                },
-                input_bytes=raw,
-                input_name=name,
-                policy_path=cfg["policy_path"],
-            )
-            st.session_state["report"] = report
-            if hasattr(status, "update"):
-                status.update(label="✓ Curadoria concluída e audit log gerado com sucesso!", state="complete", expanded=False)
-            time.sleep(0.3)
-        except Exception as e:
-            if hasattr(status, "update"):
-                status.update(label="✕ Falha na execução do pipeline", state="error", expanded=True)
-            st.error(f"Falha crítica: {str(e)}")
-            st.exception(e)
-            st.session_state["report"] = None
-            st.stop()
-
-
-# --- TELA 2: RESULT (VER PIPELINE -> ENTENDER -> INVESTIGAR -> BAIXAR -> REPRODUZIR) --
-
-
-
-def render_stepper(current_stage_id: str = "OUTPUT") -> None:
+    # 3. Canvas do DAG (O Grafo Vivo)
     st.markdown("---")
-    st.caption("**Progresso da Curadoria (Wizard)**")
-    
-    try:
-        current_idx = next(i for i, s in enumerate(WIZARD_STAGES) if s["id"] == current_stage_id)
-    except StopIteration:
-        current_idx = len(WIZARD_STAGES) - 1
+    dag_placeholder = st.empty()
 
-    cols = st.columns(len(WIZARD_STAGES))
-    for i, (col, stage) in enumerate(zip(cols, WIZARD_STAGES)):
-        color = "#1e8e3e" if i < current_idx else "#1a73e8" if i == current_idx else "#70757a"
-        weight = "800" if i == current_idx else "400"
-        with col:
-            st.markdown(f"<div style='text-align: center; color: {color}; font-weight: {weight}; font-size: 0.8rem;'>{i+1}. {stage['title']}</div>", unsafe_allow_html=True)
-    
-    st.progress(current_idx / max(1, len(WIZARD_STAGES) - 1))
-    st.markdown("---")
+    # Se clicou em executar: aciona o ciclo reativo passo a passo
+    if run_btn:
+        execute_pipeline_live(dag_placeholder)
+
+    # Renderização estática do frame atual / interatividade pós-execução
+    flow_state = build_live_dag_state(
+        st.session_state["stage_live_states"],
+        selected_node=st.session_state.get("selected_node")
+    )
+    with dag_placeholder:
+        updated = streamlit_flow("curation_live_dag", flow_state, height=360, fit_view=False)
+        # Handle selection logic only if execution is finished (report exists)
+        if updated and st.session_state.get("report") is not None:
+            if updated.selected_id != st.session_state.get("selected_node"):
+                st.session_state["selected_node"] = updated.selected_id
+                st.rerun()
+
+    # 4. Detalhes contextuais do nó clicado (Structure Lineage e Métricas)
+    if st.session_state.get("report"):
+        selecionado = st.session_state.get("selected_node")
+        
+        # Botão para limpar a seleção
+        if selecionado:
+            if st.button("Voltar ao resumo da execução", width="stretch"):
+                st.session_state["selected_node"] = None
+                st.rerun()
+                
+        if selecionado:
+            view = st.session_state["run_view"]
+            node = view.graph.node(selecionado) if selecionado else None
+            if node:
+                render_node_details(node, st.session_state["report"])
+        else:
+            render_run_details(st.session_state["run_view"], st.session_state["report"])
+
 
 def render_run_details(view: RunViewModel, report: RunReport) -> None:
     """Resumo global, exibido quando nenhum no esta selecionado."""
@@ -437,7 +341,7 @@ def render_run_details(view: RunViewModel, report: RunReport) -> None:
         "aconteceu nele."
     )
     
-    tab_overview, tab_lineage, tab_exports = st.tabs(["Visão Geral", "Linhagem de Estruturas", "Exportar Dados"])
+    tab_overview, tab_lineage = st.tabs(["Visão Geral", "Linhagem de Estruturas"])
     
     with tab_overview:
         a, b, c, d = st.columns(4)
@@ -455,12 +359,29 @@ def render_run_details(view: RunViewModel, report: RunReport) -> None:
             help="Tempo real (wall-clock time) para executar todos os estágios do pipeline."
         )
 
+        st.markdown("---")
+        st.markdown("#### Reprodutibilidade e Manifesto")
+        prov = report.provenance
+        
+        with st.expander("📦 Comando de Reprodução (CLI) e Ambiente", expanded=True):
+            st.code(prov.reproduction_command(input_path=prov.input_name), language="bash")
+            
+            env_col1, env_col2 = st.columns(2)
+            with env_col1:
+                st.markdown("**Sistema**")
+                st.json(prov.environment)
+            with env_col2:
+                st.markdown("**Bibliotecas**")
+                st.json(prov.versions)
+                
+            if not prov.reproducible:
+                st.warning("Esta execução possui bloqueadores de reprodução exata:")
+                for blocker in prov.reproduction_blockers():
+                    st.markdown(f"- {blocker}")
+
 
     with tab_lineage:
         render_structure_lineage(report)
-        
-    with tab_exports:
-        render_exports(report)
 
 
 def render_structure_lineage(report: RunReport) -> None:
@@ -562,52 +483,6 @@ def render_structure_lineage(report: RunReport) -> None:
         st.caption(f"**Variação de carga líquida:** `{selected_rec.delta_net_charge}`")
 
 
-def render_exports(report: RunReport) -> None:
-    st.markdown("#### Artefatos de Saída")
-    st.caption("Todos os dados gerados pelo pipeline estão disponíveis para download imediato em múltiplos formatos.")
-    
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.markdown("**Dataset Curado**")
-        st.caption("Moléculas aprovadas e deduplicadas.")
-        st.download_button("📥 CSV", to_csv(report.approved, ("input_id", "raw_smiles", "curated_smiles", "inchikey", "status")), file_name="curated_structures.csv", mime="text/csv", width="stretch", key="exp_cur")
-    
-    with col2:
-        st.markdown("**Dataset Rejeitado**")
-        st.caption("Moléculas descartadas e motivos.")
-        st.download_button("📥 CSV", rejected_csv(report), file_name="rejected_structures.csv", mime="text/csv", width="stretch", key="exp_rej")
-
-    with col3:
-        st.markdown("**Log de Auditoria**")
-        st.caption("Registro de transformações.")
-        st.download_button("📥 CSV", full_csv(report), file_name="audit_log.csv", mime="text/csv", width="stretch", key="exp_aud")
-
-    with col4:
-        st.markdown("**Pacote Completo**")
-        st.caption("ZIP com manifesto e proveniência.")
-        st.download_button("📦 ZIP", reproducibility_package(report), file_name=f"curation_run_{report.provenance.run_id[:8]}.zip", mime="application/zip", width="stretch", key="exp_zip")
-    
-    st.markdown("---")
-    st.markdown("#### Reprodutibilidade e Manifesto")
-    prov = report.provenance
-    
-    with st.expander("📦 Comando de Reprodução (CLI) e Ambiente", expanded=True):
-        st.code(prov.reproduction_command(input_path=prov.input_name), language="bash")
-        
-        env_col1, env_col2 = st.columns(2)
-        with env_col1:
-            st.markdown("**Sistema**")
-            st.json(prov.environment)
-        with env_col2:
-            st.markdown("**Bibliotecas**")
-            st.json(prov.versions)
-            
-        if not prov.reproducible:
-            st.warning("Esta execução possui bloqueadores de reprodução exata:")
-            for blocker in prov.reproduction_blockers():
-                st.markdown(f"- {blocker}")
-
-
 def render_node_details(node: NodeContract, report: RunReport) -> None:
     """Detalhe contextual do no selecionado."""
     st.markdown(f"#### {node.label}  {node.glyph} {node.status_text}")
@@ -619,13 +494,13 @@ def render_node_details(node: NodeContract, report: RunReport) -> None:
     c.metric("Transformadas", node.transformed_count, help="Estruturas quimicamente modificadas neste estágio.")
     d.metric("Removidas", node.rejected_count, help="Estruturas removidas e enviadas para o dataset de rejeitadas.")
     e.metric(
-        "Duracao",
+        "Duração",
         f"{node.duration_seconds * 1000:.0f} ms" if node.duration_seconds else "-",
         help="Tempo computacional gasto na execução exclusiva deste nó."
     )
 
     if node.parameters:
-        with st.expander("Parametros que governam este estagio"):
+        with st.expander("Parâmetros que governam este estágio"):
             st.json(node.parameters)
 
     if node.exclusions:
@@ -657,120 +532,11 @@ def render_node_details(node: NodeContract, report: RunReport) -> None:
         st.success("Nenhuma estrutura foi removida neste estagio.")
 
 
-def render_pipeline_graph(report: RunReport) -> None:
-    """Grafo interativo e painel contextual.
-
-    O clique em um no volta do navegador pelo componente e vira
-    ``selected_node``; o painel abaixo alterna entre detalhe da execucao e
-    detalhe do estagio.
-    """
-    view = build_run_view(report)
-    st.session_state["run_view"] = view
-
-    left, right = st.columns([1, 2])
-    with left:
-        escolhido = render_dag(
-            view.graph, selected=st.session_state.get("selected_node"), height=560
-        )
-        if escolhido != st.session_state.get("selected_node"):
-            st.session_state["selected_node"] = escolhido
-            st.rerun()
-        if st.session_state.get("selected_node"):
-            if st.button("Voltar ao resumo da execucao", width="stretch"):
-                st.session_state["selected_node"] = None
-                st.rerun()
-
-    with right:
-        selecionado = st.session_state.get("selected_node")
-        node = view.graph.node(selecionado) if selecionado else None
-        if node is None:
-            render_run_details(view, report)
-        else:
-            render_node_details(node, report)
-
-
-def render_results_screen() -> None:
-    report: Optional[RunReport] = st.session_state.get("report")
-    
-    if st.session_state["ui_state"] != "COMPLETE":
-        st.session_state["ui_state"] = "COMPLETE"
-        st.rerun()
-
-    if report:
-        prov = report.provenance
-        # Top Bar com identificadores e ações compactas
-        top_bar_col1, top_bar_actions = st.columns([3, 2])
-        with top_bar_col1:
-            st.markdown(f"## 🏆 Run: `{prov.run_id[:8]}`")
-            st.caption(f"**Curadoria concluída.** Hash de Política: `{prov.policy_hash[:16]}...`")
-
-        with top_bar_actions:
-            st.markdown("<br>", unsafe_allow_html=True)
-            act_col1, act_col2 = st.columns(2)
-            with act_col1:
-                # Popover de Downloads agregando todos os artefatos
-                with st.popover("📥 Downloads", help="Exportar datasets e pacote de auditoria"):
-                    st.markdown("##### 📥 Opções de Exportação")
-                    st.caption("Arquivos derivados desta execução:")
-                    
-                    st.download_button(
-                        "📄 Dataset Curado (CSV)",
-                        to_csv(report.approved, ("input_id", "raw_smiles", "curated_smiles", "inchikey", "status")),
-                        file_name="curated_structures.csv",
-                        mime="text/csv",
-                        width="stretch",
-                        key="exp_cur_popover"
-                    )
-                    st.download_button(
-                        "📄 Dataset Rejeitado (CSV)",
-                        rejected_csv(report),
-                        file_name="rejected_structures.csv",
-                        mime="text/csv",
-                        width="stretch",
-                        key="exp_rej_popover"
-                    )
-                    st.download_button(
-                        "📊 Log de Auditoria Completo (CSV)",
-                        full_csv(report),
-                        file_name="audit_log.csv",
-                        mime="text/csv",
-                        width="stretch",
-                        key="exp_aud_popover"
-                    )
-                    st.download_button(
-                        "📦 Pacote de Reprodutibilidade (ZIP)",
-                        reproducibility_package(report),
-                        file_name=f"curation_run_{report.provenance.run_id[:8]}.zip",
-                        mime="application/zip",
-                        width="stretch",
-                        key="exp_zip_popover"
-                    )
-
-            with act_col2:
-                if st.button("🔄 Nova Análise", width="stretch", help="Reiniciar e carregar novas estruturas"):
-                    reset_to_input()
-        
-        # Render Stepper (Fase 3)
-        render_stepper("OUTPUT")
-        
-        render_pipeline_graph(report)
-
-
-
-# --- APLICAÇÃO PRINCIPAL -------------------------------------------------------------
-
-
 def main() -> None:
     st.set_page_config(page_title="Structure Curation Pipeline", layout="centered")
     inject_styles()
     init_session_state()
-
-    ui_state = st.session_state["ui_state"]
-
-    if ui_state == "INPUT":
-        render_input_screen()
-    else:
-        render_results_screen()
+    render_workbench()
 
 
 if __name__ == "__main__":
