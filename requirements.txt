@@ -1,0 +1,7 @@
+rdkit>=2023.9
+chembl_structure_pipeline>=1.2
+pydantic>=2.0
+streamlit>=1.30
+pandas>=2.0
+pillow>=10.0
+pyarrow>=24.0.0,<25.0.0
