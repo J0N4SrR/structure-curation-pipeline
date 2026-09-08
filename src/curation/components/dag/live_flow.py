@@ -112,8 +112,10 @@ def build_live_dag_state(
             StreamlitFlowNode(
                 id=stage_id,
                 pos=(x_offset + (idx * spacing), y_pos),
-                data={"label": card_content},
+                data={"content": card_content},
                 node_type="default",
+                source_position="right",
+                target_position="left",
                 style=node_style
             )
         )

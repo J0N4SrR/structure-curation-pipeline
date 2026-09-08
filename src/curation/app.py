@@ -150,14 +150,15 @@ def execute_pipeline_live(dag_container):
         stage_reports["DEDUPLICATION"] = report.dedup
 
     # Animação passo a passo dos nós
-    for stage_id, label in ORDERED_STAGES:
+    for idx, (stage_id, label) in enumerate(ORDERED_STAGES):
         # Marca estágio como RUNNING (Azul, pulsante, aresta animada)
         states[stage_id]["status"] = StageStatus.RUNNING
+        dag_container.empty()
         with dag_container:
-            streamlit_flow("curation_live_dag", build_live_dag_state(states), height=360, fit_view=False)
+            streamlit_flow(f"step_run_{idx}", build_live_dag_state(states), height=360, fit_view=True, show_controls=False)
         
         # Pausa cadenciada para percepção do processamento científico
-        time.sleep(0.6)
+        time.sleep(0.5)
 
         # Atualiza métricas reais e marca como SUCCESS / WARNING
         rep = stage_reports.get(stage_id)
@@ -172,14 +173,16 @@ def execute_pipeline_live(dag_container):
         else:
             states[stage_id]["status"] = StageStatus.SUCCESS
 
+        dag_container.empty()
         with dag_container:
-            streamlit_flow("curation_live_dag", build_live_dag_state(states), height=360, fit_view=False)
+            streamlit_flow(f"step_done_{idx}", build_live_dag_state(states), height=360, fit_view=True, show_controls=False)
+
+        time.sleep(0.4)
 
     st.session_state["stage_live_states"] = states
     st.session_state["report"] = report
     st.session_state["run_view"] = build_run_view(report)
     st.session_state["selected_node"] = None
-    st.rerun()
 
 def render_workbench():
     top_bar = st.container()
@@ -307,7 +310,14 @@ def render_workbench():
         selected_node=st.session_state.get("selected_node")
     )
     with dag_placeholder:
-        updated = streamlit_flow("curation_live_dag", flow_state, height=360, fit_view=False)
+        updated = streamlit_flow(
+            "curation_final_dag",
+            flow_state,
+            height=360,
+            fit_view=True,
+            get_node_on_click=True,
+            show_controls=True
+        )
         # Handle selection logic only if execution is finished (report exists)
         if updated and st.session_state.get("report") is not None:
             if updated.selected_id != st.session_state.get("selected_node"):
