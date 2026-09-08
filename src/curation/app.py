@@ -304,10 +304,8 @@ def render_input_screen() -> None:
         try:
             preview = preview_input(raw_bytes.decode("utf-8", errors="replace"))
             total_detected = preview.total
-            valid_detected = preview.total - preview.n_invalid
         except Exception:
             total_detected = len(raw_bytes.decode("utf-8", errors="ignore").splitlines())
-            valid_detected = total_detected
 
         if total_detected > 0:
             st.success(f"✓ **{input_name}** ({total_detected} molecules detected)")
@@ -319,7 +317,7 @@ def render_input_screen() -> None:
                 try:
                     lines = [line.strip() for line in raw_bytes.decode("utf-8", errors="replace").splitlines() if line.strip()]
                     sample_rows = [{"Index": i + 1, "SMILES / Structure": line} for i, line in enumerate(lines[:5])]
-                    st.dataframe(sample_rows, use_container_width=True, hide_index=True)
+                    st.dataframe(sample_rows, width="stretch", hide_index=True)
                 except Exception:
                     st.caption("Sample preview unavailable.")
         else:
@@ -335,15 +333,18 @@ def render_input_screen() -> None:
         if st.button(
             "Start curation",
             type="primary",
-            use_container_width=True,
+            width="stretch",
             disabled=start_disabled,
             help="Click to start the automated curation pipeline",
         ):
-            # Iniciar execução do backend e mudar estado da UI para CURATING
+            # Iniciar execução do backend e mudar estado da UI
             run_backend_pipeline()
-            st.session_state["ui_state"] = "CURATING"
-            st.session_state["curating_step_idx"] = 0
-            st.session_state["step_start_time"] = time.time()
+            if st.session_state.get("fast_mode"):
+                st.session_state["ui_state"] = "COMPLETE"
+            else:
+                st.session_state["ui_state"] = "CURATING"
+                st.session_state["curating_step_idx"] = 0
+                st.session_state["step_start_time"] = time.time()
             st.rerun()
 
 
@@ -473,19 +474,24 @@ def render_step_detail(step_id: str, report: RunReport) -> None:
 def render_curating_and_result_screen() -> None:
     report: Optional[RunReport] = st.session_state.get("report")
     is_complete = st.session_state["ui_state"] == "COMPLETE"
+    fast_mode = st.session_state.get("fast_mode", False)
 
     # Gerenciamento de tempo de exibição da UI para animação do Wizard
     if not is_complete:
-        current_idx = st.session_state["curating_step_idx"]
-        elapsed = time.time() - st.session_state["step_start_time"]
-        if elapsed >= MIN_STAGE_DISPLAY_TIME:
-            if current_idx < len(WIZARD_STAGES) - 1:
-                st.session_state["curating_step_idx"] = current_idx + 1
-                st.session_state["step_start_time"] = time.time()
-                st.rerun()
-            else:
-                st.session_state["ui_state"] = "COMPLETE"
-                st.rerun()
+        if fast_mode:
+            st.session_state["ui_state"] = "COMPLETE"
+            st.rerun()
+        else:
+            current_idx = st.session_state["curating_step_idx"]
+            elapsed = time.time() - st.session_state["step_start_time"]
+            if elapsed >= MIN_STAGE_DISPLAY_TIME:
+                if current_idx < len(WIZARD_STAGES) - 1:
+                    st.session_state["curating_step_idx"] = current_idx + 1
+                    st.session_state["step_start_time"] = time.time()
+                    st.rerun()
+                else:
+                    st.session_state["ui_state"] = "COMPLETE"
+                    st.rerun()
 
     # Cabeçalho do Estado com Acessibilidade (role="status", aria-live="polite")
     if is_complete and report:
@@ -574,7 +580,7 @@ def render_curating_and_result_screen() -> None:
                 to_csv(report.approved, ("input_id", "raw_smiles", "curated_smiles", "inchikey", "status")),
                 file_name="curated_structures.csv",
                 mime="text/csv",
-                use_container_width=True,
+                width="stretch",
             )
 
         with col_d2:
@@ -583,7 +589,7 @@ def render_curating_and_result_screen() -> None:
                 rejected_csv(report),
                 file_name="rejected_structures.csv",
                 mime="text/csv",
-                use_container_width=True,
+                width="stretch",
             )
 
         with col_d3:
@@ -592,17 +598,17 @@ def render_curating_and_result_screen() -> None:
                 full_csv(report),
                 file_name="audit_log.csv",
                 mime="text/csv",
-                use_container_width=True,
+                width="stretch",
             )
 
         st.markdown("<br>", unsafe_allow_html=True)
         new_col = st.columns([1, 2, 1])
         with new_col[1]:
-            if st.button("New analysis", use_container_width=True, help="Reset and start a new analysis"):
+            if st.button("New analysis", width="stretch", help="Reset and start a new analysis"):
                 reset_to_input()
 
     # Rerun automático para atualização suave durante o estado CURATING
-    if not is_complete:
+    if not is_complete and not fast_mode:
         time.sleep(0.1)
         st.rerun()
 
