@@ -219,6 +219,8 @@ class RunProvenance:
             parts.append(f"--max-ha {self.parameters['max_ha']}")
         if self.parameters.get("deduplicate") is False:
             parts.append("--no-dedup")
+        if self.parameters.get("require_carbon"):
+            parts.append("--require-carbon")
         if self.policy_path not in (UNKNOWN, ""):
             parts.append(f"--decisions {self.policy_path}")
 

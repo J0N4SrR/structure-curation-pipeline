@@ -329,3 +329,107 @@ def test_stage_timings_reset_between_runs() -> None:
     total = sum(stage.duration_seconds for stage in second.stages)
     assert total > 0
     assert second.total == 1
+
+
+# --- Guarda estrutural contra regressão de reprodutibilidade -----------------------
+
+
+def _tracked_parameters() -> dict:
+    from curation.filters import EligibilityCriteria
+
+    return CurationPipeline(
+        POLICY_HASH,
+        criteria=EligibilityCriteria(
+            max_molecular_weight=500.0, max_heavy_atoms=30, require_carbon=True
+        ),
+        deduplicate=False,
+    ).default_parameters()
+
+
+def test_every_parameter_reaches_the_batch_manifest(tmp_path) -> None:
+    """Todo parâmetro efetivo precisa entrar no manifesto do lote.
+
+    Regressão estrutural: os cortes de elegibilidade não eram registrados pela
+    CLI, então um lote com ``--max-mw 500 --require-carbon`` produzia um manifesto
+    indistinguível de um lote com os padrões. A D-10 promete o contrário.
+
+    Este teste falha automaticamente quando um parâmetro novo for adicionado sem
+    ser conectado, que é o modo de falha real.
+    """
+    from curation.filters import EligibilityCriteria
+    from curation.io import read_manifest
+
+    pipeline = CurationPipeline(
+        POLICY_HASH,
+        criteria=EligibilityCriteria(
+            max_molecular_weight=500.0, max_heavy_atoms=30, require_carbon=True
+        ),
+        deduplicate=False,
+    )
+    pipeline.run("CCO\nCCN\n", tmp_path)
+
+    manifest = read_manifest(tmp_path)
+    assert manifest is not None
+    recorded = manifest.get("parameters", {})
+    missing = set(_tracked_parameters()) - set(recorded)
+    assert not missing, f"parâmetros ausentes do manifesto: {sorted(missing)}"
+    assert recorded["max_mw"] == 500.0
+    assert recorded["require_carbon"] is True
+    assert recorded["deduplicate"] is False
+
+
+def test_every_cli_parameter_reaches_the_reproduction_command() -> None:
+    """O comando de reprodução não pode omitir um parâmetro que muda o resultado.
+
+    Regressão: ``--require-carbon`` era omitido, então seguir o comando produziria
+    um dataset diferente do original, em silêncio.
+    """
+    from curation.provenance import RunProvenance
+
+    provenance = RunProvenance(
+        run_id="r",
+        started_at="t",
+        policy_hash="a" * 64,
+        parameters=_tracked_parameters(),
+        policy_path="docs/decisions.md",
+    )
+    command = provenance.reproduction_command("entrada.smi")
+
+    for flag in ("--max-mw 500.0", "--max-ha 30", "--no-dedup", "--require-carbon"):
+        assert flag in command, f"{flag} ausente do comando de reprodução"
+
+
+def test_defaults_do_not_clutter_the_reproduction_command() -> None:
+    """Só o que difere do padrão precisa aparecer como flag."""
+    from curation.provenance import RunProvenance
+
+    provenance = RunProvenance(
+        run_id="r", started_at="t", policy_hash="a" * 64,
+        parameters=CurationPipeline(POLICY_HASH).default_parameters(),
+    )
+    command = provenance.reproduction_command("entrada.smi")
+
+    assert "--no-dedup" not in command
+    assert "--require-carbon" not in command
+
+
+def test_both_manifest_producers_agree_on_the_core_fields(tmp_path) -> None:
+    """Há dois produtores de manifesto; eles não podem divergir no essencial.
+
+    ``BatchWriter`` serve à CLI e ``run_manifest`` serve ao cliente interativo.
+    Foi a divergência entre os dois que deixou os parâmetros de fora por um lado.
+    """
+    from curation.io import read_manifest
+
+    source = "CCO\nCCN\nC(C)(C)(C)(C)C\n"
+    pipeline = CurationPipeline(POLICY_HASH)
+
+    pipeline.run(source, tmp_path)
+    batch = read_manifest(tmp_path)
+    interactive = run_manifest(
+        pipeline.run_report(source, input_bytes=source.encode())
+    )
+
+    assert batch["counts"]["total"] == interactive["metrics"]["Total Processed"]
+    assert batch["policy_hash"] == interactive["provenance"]["policy_hash"]
+    assert set(batch["parameters"]) == set(interactive["provenance"]["parameters"])

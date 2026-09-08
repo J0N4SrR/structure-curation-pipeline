@@ -1,13 +1,10 @@
 """Interface Streamlit (Wizard UI) para o Structure Curation Pipeline.
 
-Interface simples, intuitiva e guiada em 3 estados principais:
-1. INPUT: Recepção de estruturas e configuração.
-2. CURATING: Acompanhamento visual da execução (Wizard / Workflow).
-3. RESULT: Apresentação do resultado final e download dos artefatos.
-
-Arquitetura: cliente fino de apresentação. Nenhuma regra química é calculada
-aqui. O atraso de apresentação da UI (MIN_STAGE_DISPLAY_TIME) ocorre apenas na
-camada de exibição do Streamlit, sem afetar o backend.
+Refatoração baseada em princípios de HCI, UX, A11y e Frontend Design:
+- 3 Estados Principais: INPUT, CURATING, COMPLETE.
+- Contraste de cores WCAG 2.1 AA e suporte a acessibilidade (aria-live, role="status").
+- Feedback visual com pré-visualização de amostras e animações de progresso.
+- Design limpo, glassmorphism sutil e apresentação guiada.
 """
 
 from __future__ import annotations
@@ -94,31 +91,99 @@ def inject_styles() -> None:
     st.markdown(
         """
         <style>
-          .block-container { max-width: 780px; padding-top: 2rem; padding-bottom: 3rem; }
-          .wizard-header { text-align: center; margin-bottom: 2rem; }
-          .wizard-title { font-size: 2.2rem; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 0.2rem; }
-          .wizard-sub { font-size: 1.05rem; opacity: 0.7; }
+          /* Estilos globais e acessibilidade */
+          .block-container {
+            max-width: 800px;
+            padding-top: 2rem;
+            padding-bottom: 3.5rem;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+          }
+          
+          /* Cabeçalho do Wizard */
+          .wizard-header {
+            text-align: center;
+            margin-bottom: 2.2rem;
+          }
+          .wizard-title {
+            font-size: 2.3rem;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            margin-bottom: 0.2rem;
+          }
+          .wizard-sub {
+            font-size: 1.05rem;
+            opacity: 0.75;
+          }
+          
+          /* Cards do Wizard com Glassmorphism sutil */
           .wizard-card {
-            border: 1px solid rgba(128,128,128,0.2);
-            border-radius: 10px;
-            padding: 1.1rem 1.4rem;
+            border: 1px solid rgba(128, 128, 128, 0.25);
+            border-radius: 12px;
+            padding: 1.2rem 1.5rem;
             margin-bottom: 0.8rem;
-            background: rgba(255,255,255,0.02);
-            transition: all 0.2s ease;
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(8px);
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
           }
+          .wizard-card:focus-within {
+            outline: 2px solid #1a73e8;
+            outline-offset: 2px;
+          }
+          
+          /* Animação pulsante acessível para etapa em execução */
+          @keyframes pulse-running {
+            0% { border-color: rgba(26, 115, 232, 0.4); box-shadow: 0 0 8px rgba(26, 115, 232, 0.15); }
+            50% { border-color: rgba(26, 115, 232, 0.9); box-shadow: 0 0 16px rgba(26, 115, 232, 0.35); }
+            100% { border-color: rgba(26, 115, 232, 0.4); box-shadow: 0 0 8px rgba(26, 115, 232, 0.15); }
+          }
+          
           .wizard-card-running {
-            border-color: #1a73e8;
-            box-shadow: 0 0 12px rgba(26,115,232,0.2);
+            animation: pulse-running 2s infinite ease-in-out;
+            background: rgba(26, 115, 232, 0.04);
           }
-          .wizard-card-completed { border-color: rgba(30,142,62,0.4); }
-          .wizard-card-failed { border-color: rgba(217,48,37,0.4); }
-          .status-badge { font-weight: 700; font-size: 1rem; margin-right: 0.6rem; }
-          .status-pending { color: #80868b; }
+          .wizard-card-completed {
+            border-color: rgba(30, 142, 62, 0.45);
+            background: rgba(30, 142, 62, 0.02);
+          }
+          .wizard-card-failed {
+            border-color: rgba(217, 48, 37, 0.45);
+            background: rgba(217, 48, 37, 0.02);
+          }
+          
+          /* Badges e cores de contraste alto (WCAG AA) */
+          .status-badge {
+            font-weight: 700;
+            font-size: 1.1rem;
+            margin-right: 0.7rem;
+            display: inline-block;
+          }
+          .status-pending { color: #70757a; }
           .status-running { color: #1a73e8; }
           .status-completed { color: #1e8e3e; }
           .status-failed { color: #d93025; }
-          .summary-number { font-size: 2rem; font-weight: 800; color: #1e8e3e; }
-          .step-connector { text-align: center; font-size: 1.2rem; opacity: 0.3; margin: -0.4rem 0; }
+          
+          /* Indicador de progresso no topo */
+          .progress-tracker {
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #1a73e8;
+            margin-bottom: 0.4rem;
+          }
+          .summary-number {
+            font-size: 2.1rem;
+            font-weight: 800;
+            color: #1e8e3e;
+            letter-spacing: -0.02em;
+          }
+          .step-connector {
+            text-align: center;
+            font-size: 1.2rem;
+            opacity: 0.35;
+            margin: -0.4rem 0;
+            user-select: none;
+          }
         </style>
         """,
         unsafe_allow_html=True,
@@ -169,10 +234,10 @@ def reset_to_input() -> None:
 def render_input_screen() -> None:
     st.markdown(
         """
-        <div class='wizard-header'>
+        <div class='wizard-header' role='region' aria-label='Structure Curation Header'>
             <div class='wizard-title'>Structure Curation</div>
             <div class='wizard-sub'>Curate your molecular library</div>
-            <div style='font-size:0.85rem; opacity:0.5; margin-top:0.3rem;'>Standardize, validate and deduplicate chemical structures</div>
+            <div style='font-size:0.85rem; opacity:0.6; margin-top:0.3rem;'>Standardize, validate and deduplicate chemical structures</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -180,7 +245,7 @@ def render_input_screen() -> None:
 
     top_col1, top_col2 = st.columns([6, 1])
     with top_col2:
-        with st.popover("⚙", help="Configuration"):
+        with st.popover("⚙", help="Configuration Options"):
             st.markdown("### Configuration")
             cfg_mw = st.number_input(
                 "Molecular weight maximum (Da)",
@@ -188,6 +253,7 @@ def render_input_screen() -> None:
                 max_value=10000.0,
                 value=st.session_state["config"]["max_mw"],
                 step=50.0,
+                help="Maximum allowed molecular weight on parent structure.",
             )
             cfg_ha = st.number_input(
                 "Heavy atoms maximum",
@@ -195,10 +261,12 @@ def render_input_screen() -> None:
                 max_value=1000,
                 value=st.session_state["config"]["max_ha"],
                 step=5,
+                help="Maximum heavy atoms allowed on parent structure.",
             )
             cfg_dedup = st.checkbox(
                 "Deduplicate structures",
                 value=st.session_state["config"]["deduplicate"],
+                help="Deduplicate exact structures based on full InChIKey.",
             )
 
             st.session_state["config"]["max_mw"] = float(cfg_mw)
@@ -215,6 +283,7 @@ def render_input_screen() -> None:
             height=160,
             placeholder="CCO\nCC(=O)O[Na]\nN[C@@H](C)C(=O)O.Cl\nc1ccccc1",
             label_visibility="collapsed",
+            help="Paste one SMILES string per line",
         )
         if text.strip():
             raw_bytes = text.encode("utf-8")
@@ -225,6 +294,7 @@ def render_input_screen() -> None:
             "Upload file",
             type=["csv", "tsv", "smi", "smiles", "txt"],
             label_visibility="collapsed",
+            help="Upload a file containing chemical structures (CSV, TSV, SMI)",
         )
         if uploaded is not None:
             raw_bytes = uploaded.getvalue()
@@ -234,13 +304,24 @@ def render_input_screen() -> None:
         try:
             preview = preview_input(raw_bytes.decode("utf-8", errors="replace"))
             total_detected = preview.total
+            valid_detected = preview.total - preview.n_invalid
         except Exception:
             total_detected = len(raw_bytes.decode("utf-8", errors="ignore").splitlines())
+            valid_detected = total_detected
 
         if total_detected > 0:
             st.success(f"✓ **{input_name}** ({total_detected} molecules detected)")
             st.session_state["raw_input"] = raw_bytes
             st.session_state["input_name"] = input_name
+
+            # Pré-visualização de amostras para confirmação do usuário (HCI / Error Prevention)
+            with st.expander("Preview sample molecules", expanded=False):
+                try:
+                    lines = [line.strip() for line in raw_bytes.decode("utf-8", errors="replace").splitlines() if line.strip()]
+                    sample_rows = [{"Index": i + 1, "SMILES / Structure": line} for i, line in enumerate(lines[:5])]
+                    st.dataframe(sample_rows, use_container_width=True, hide_index=True)
+                except Exception:
+                    st.caption("Sample preview unavailable.")
         else:
             st.warning("Please provide at least one valid molecule.")
             st.session_state["raw_input"] = None
@@ -256,6 +337,7 @@ def render_input_screen() -> None:
             type="primary",
             use_container_width=True,
             disabled=start_disabled,
+            help="Click to start the automated curation pipeline",
         ):
             # Iniciar execução do backend e mudar estado da UI para CURATING
             run_backend_pipeline()
@@ -405,12 +487,12 @@ def render_curating_and_result_screen() -> None:
                 st.session_state["ui_state"] = "COMPLETE"
                 st.rerun()
 
-    # Cabeçalho do Estado
+    # Cabeçalho do Estado com Acessibilidade (role="status", aria-live="polite")
     if is_complete and report:
         kpis = report.kpis()
         st.markdown(
             f"""
-            <div class='wizard-header'>
+            <div class='wizard-header' role='status' aria-live='polite'>
                 <div class='wizard-title' style='color:#1e8e3e;'>Curation complete</div>
                 <div class='summary-number'>{kpis['Total Processed']} input → {kpis['Approved']} curated</div>
             </div>
@@ -418,9 +500,11 @@ def render_curating_and_result_screen() -> None:
             unsafe_allow_html=True,
         )
     else:
+        cur_num = st.session_state['curating_step_idx'] + 1
         st.markdown(
-            """
-            <div class='wizard-header'>
+            f"""
+            <div class='wizard-header' role='status' aria-live='polite'>
+                <div class='progress-tracker'>STEP {cur_num} OF {len(WIZARD_STAGES)}</div>
                 <div class='wizard-title'>Curation</div>
                 <div class='wizard-sub'>Processing molecular library...</div>
             </div>
@@ -455,13 +539,13 @@ def render_curating_and_result_screen() -> None:
             with col1:
                 st.markdown(
                     f"""
-                    <div class='wizard-card {card_class}'>
+                    <div class='wizard-card {card_class}' tabindex='0' aria-label='{stage_info["title"]} stage {status_text}'>
                         <div>
                             <span class='status-badge {status_class}'>{status_icon}</span>
                             <strong>{stage_info['title']}</strong>
-                            <span style='font-size:0.8rem; opacity:0.5; margin-left:0.5rem;'>{status_text}</span>
+                            <span style='font-size:0.8rem; opacity:0.55; margin-left:0.5rem;'>{status_text}</span>
                         </div>
-                        <div style='font-size:0.9rem; opacity:0.8; margin-top:0.3rem;'>
+                        <div style='font-size:0.9rem; opacity:0.8; margin-top:0.35rem;'>
                             {summary if summary else stage_info['description']}
                         </div>
                     </div>
@@ -470,7 +554,7 @@ def render_curating_and_result_screen() -> None:
                 )
             with col2:
                 if (idx <= cur_idx or is_complete) and report:
-                    with st.popover("Details"):
+                    with st.popover("Details", help=f"View details for {stage_info['title']}"):
                         st.markdown(f"### {stage_info['title']}")
                         st.caption(stage_info["description"])
                         st.divider()
@@ -514,7 +598,7 @@ def render_curating_and_result_screen() -> None:
         st.markdown("<br>", unsafe_allow_html=True)
         new_col = st.columns([1, 2, 1])
         with new_col[1]:
-            if st.button("New analysis", use_container_width=True):
+            if st.button("New analysis", use_container_width=True, help="Reset and start a new analysis"):
                 reset_to_input()
 
     # Rerun automático para atualização suave durante o estado CURATING

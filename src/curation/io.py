@@ -389,10 +389,15 @@ class BatchWriter:
         out_dir: Union[str, Path],
         policy_hash: str,
         pipeline_version: str = PIPELINE_VERSION,
+        parameters: Optional[dict] = None,
     ) -> None:
         self.out_dir = Path(out_dir)
         self.policy_hash = policy_hash
         self.pipeline_version = pipeline_version
+        # Os parâmetros efetivos precisam entrar no manifesto: a D-10 promete que o
+        # valor aplicado é registrado para permitir reprodução, e sem eles um lote
+        # com cortes estritos é indistinguível de um lote com os padrões.
+        self.parameters = dict(parameters or {})
 
         self.n_total = 0
         self.n_passed = 0
@@ -545,6 +550,7 @@ class BatchWriter:
         manifest = {
             "pipeline_version": self.pipeline_version,
             "policy_hash": self.policy_hash,
+            "parameters": dict(self.parameters),
             "started_at": self._started_at.isoformat() if self._started_at else None,
             "finished_at": finished_at.isoformat(),
             "versions": {

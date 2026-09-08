@@ -163,7 +163,10 @@ class CurationPipeline:
         index = DedupIndex() if self.deduplicate else None
 
         with BatchWriter(
-            out_path, self.policy_hash, pipeline_version=self.pipeline_version
+            out_path,
+            self.policy_hash,
+            pipeline_version=self.pipeline_version,
+            parameters=self.default_parameters(),
         ) as writer:
             for record in self.process_many(read_input(source)):
                 writer.write(record)
