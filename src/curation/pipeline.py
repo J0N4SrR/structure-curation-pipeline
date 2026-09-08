@@ -22,7 +22,9 @@ import time
 from curation.dedup import DedupIndex
 from curation.engine import PIPELINE_VERSION, EngineWrapper
 from curation.filters import EligibilityCriteria
-from curation.io import BatchWriter, Source, read_input
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from curation.io import BatchWriter, Source, read_input
 from curation.models import CurationRecord, RejectionCode, Stage
 
 
@@ -152,6 +154,7 @@ class CurationPipeline:
     # --- Lote ------------------------------------------------------------------
 
     def run(self, source: Source, out_dir: Union[str, Path]) -> BatchSummary:
+        from curation.io import BatchWriter, read_input
         """Executa um lote completo: ingestão, curadoria e escrita atômica.
 
         A ingestão é um gerador e os registros são escritos à medida que saem, de
