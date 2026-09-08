@@ -369,3 +369,43 @@ def test_uppercase_smiles_header_is_detected(tmp_path: Path) -> None:
         ("CMPD_0000001", "CCO"),
         ("CMPD_0000002", "CCN"),
     ]
+
+
+# --- Prévia da entrada -----------------------------------------------------------
+
+
+def test_preview_counts_and_samples() -> None:
+    from curation.io import preview_input
+
+    preview = preview_input("CCO\nCCN\nc1ccccc1\nCC(=O)O\nCCC\nCCCC\n")
+
+    assert preview.total == 6
+    assert len(preview.head) == 5, "a prévia mostra as cinco primeiras"
+    assert preview.n_invalid == 0
+    assert preview.smiles_column
+
+
+def test_preview_flags_syntactically_invalid_entries() -> None:
+    from curation.io import preview_input
+
+    preview = preview_input("CCO\nnao-e-smiles\nC1CC\n")
+
+    assert preview.total == 3
+    assert preview.n_invalid == 2
+    assert {smiles for _, smiles in preview.invalid} == {"nao-e-smiles", "C1CC"}
+
+
+def test_preview_does_not_pre_empt_the_pipeline() -> None:
+    """A triagem é só sintática: valência é problema do pipeline, não da prévia."""
+    from curation.io import preview_input
+
+    preview = preview_input("C(C)(C)(C)(C)C\n")
+    assert preview.n_invalid == 0, "carbono pentavalente parseia; quem rejeita é o motor"
+
+
+def test_preview_of_empty_source() -> None:
+    from curation.io import preview_input
+
+    preview = preview_input("")
+    assert preview.total == 0
+    assert preview.head == []

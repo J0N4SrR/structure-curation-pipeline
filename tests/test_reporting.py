@@ -273,3 +273,59 @@ def test_csv_still_writes_empty_cells_for_missing_values(report) -> None:
     text = to_csv(report.rejected, ("input_id", "curated_smiles", "parent_mw"))
     body = text.splitlines()[1]
     assert body.endswith(",,"), body
+
+
+# --- Cobertura das funções auxiliares ---------------------------------------------
+
+
+def test_largest_reduction_points_at_the_worst_stage(report) -> None:
+    stage = report.largest_reduction()
+    assert stage is not None
+    worst = max(
+        (s.n_excluded for s in report.stages + ([report.dedup] if report.dedup else [])),
+    )
+    assert stage.n_excluded == worst
+
+
+def test_largest_reduction_is_none_when_nothing_was_removed() -> None:
+    """A frase de resumo não pode aparecer quando não houve redução."""
+    pipeline = CurationPipeline(POLICY_HASH)
+    clean = "CCO\nCCN\nCC(=O)Oc1ccccc1C(=O)O\n"
+    clean_report = pipeline.run_report(clean, input_bytes=clean.encode())
+    assert clean_report.largest_reduction() is None
+
+
+def test_progress_callback_reports_real_positions() -> None:
+    """O progresso vem do pipeline, não é estimado pela interface."""
+    pipeline = CurationPipeline(POLICY_HASH)
+    seen: list[tuple[int, int, str]] = []
+    source = "CCO\nCCN\nC(C)(C)(C)(C)C\n"
+
+    pipeline.run_report(
+        source, input_bytes=source.encode(),
+        progress=lambda position, total, identifier: seen.append(
+            (position, total, identifier)
+        ),
+    )
+
+    assert [position for position, _, _ in seen] == [1, 2, 3]
+    assert {total for _, total, _ in seen} == {3}
+
+
+def test_progress_is_optional() -> None:
+    pipeline = CurationPipeline(POLICY_HASH)
+    assert pipeline.run_report("CCO\n", input_bytes=b"CCO\n").total == 1
+
+
+def test_stage_timings_reset_between_runs() -> None:
+    """Tempos acumulados de um lote não podem vazar para o seguinte."""
+    pipeline = CurationPipeline(POLICY_HASH)
+    long_source = "\n".join(["CC(=O)Oc1ccccc1C(=O)O"] * 40)
+    short_source = "CCO"
+
+    pipeline.run_report(long_source, input_bytes=long_source.encode())
+    second = pipeline.run_report(short_source, input_bytes=short_source.encode())
+
+    total = sum(stage.duration_seconds for stage in second.stages)
+    assert total > 0
+    assert second.total == 1

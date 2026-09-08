@@ -365,6 +365,18 @@ class EngineWrapper:
         A estereoquímica é preservada como recebida (D-05); o InChIKey completo é a
         chave de identidade (D-07).
         """
+        parent = Chem.Mol(parent)
+        try:
+            # A percepção de estereoquímica precisa ser refeita antes de gerar a
+            # identidade. As ligações duplas chegam aqui como STEREONONE: o motor
+            # preserva as direções das ligações, mas não reatribui os descritores
+            # E/Z. Sem isto o InChI não enxerga a estereoquímica e ácido fumárico e
+            # ácido maleico saem com o mesmo InChIKey — que é a chave de
+            # deduplicação (D-07), então seriam fundidos como duplicata exata.
+            Chem.AssignStereochemistry(parent, cleanIt=True, force=True)
+        except Exception:
+            pass
+
         try:
             smiles = Chem.MolToSmiles(parent, canonical=True, isomericSmiles=True)
         except Exception as error:

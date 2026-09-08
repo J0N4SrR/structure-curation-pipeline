@@ -40,61 +40,57 @@ def inchikey(smiles: str) -> str:
     return Chem.MolToInchiKey(mol)
 
 
-#: (nome, ChEMBL ID, SMILES, fórmula molecular de literatura).
+#: (nome, ChEMBL ID, SMILES, fórmula molecular, InChIKey).
 #: A fórmula é verificada em teste próprio: um controle cuja estrutura esteja
 #: errada validaria o pipeline contra a molécula errada, sem que nada acusasse.
-CONTROL_DRUGS: tuple[tuple[str, str, str, str], ...] = (
-    ("Paracetamol", "CHEMBL112", "CC(=O)NC1=CC=C(O)C=C1", "C8H9NO2"),
-    ("Aspirina", "CHEMBL25", "CC(=O)OC1=CC=CC=C1C(=O)O", "C9H8O4"),
-    ("Ibuprofeno", "CHEMBL521", "CC(C)CC1=CC=C(C=C1)C(C)C(=O)O", "C13H18O2"),
-    ("Naproxeno", "CHEMBL154", "COc1ccc2cc(C(C)C(=O)O)ccc2c1", "C14H14O3"),
-    ("Diclofenaco", "CHEMBL139", "OC(=O)Cc1ccccc1Nc1c(Cl)cccc1Cl", "C14H11Cl2NO2"),
-    ("Metformina", "CHEMBL1431", "CN(C)C(=N)NC(=N)N", "C4H11N5"),
-    ("Metoprolol", "CHEMBL13", "CC(C)NCC(COC1=CC=C(C=C1)CCOC)O", "C15H25NO3"),
-    ("Propranolol", "CHEMBL27", "CC(C)NCC(COC1=CC=CC2=CC=CC=C21)O", "C16H21NO2"),
-    ("Lidocaina", "CHEMBL79", "CCN(CC)CC(=O)Nc1c(C)cccc1C", "C14H22N2O"),
-    ("Captopril", "CHEMBL1560", "CC(CS)C(=O)N1CCCC1C(=O)O", "C9H15NO3S"),
-    (
-        "Losartana", "CHEMBL191",
-        "CCCCc1nc(Cl)c(CO)n1Cc1ccc(-c2ccccc2-c2nnn[nH]2)cc1", "C22H23ClN6O",
-    ),
-    (
-        "Omeprazol", "CHEMBL1503",
-        "COc1ccc2[nH]c(S(=O)Cc3ncc(C)c(OC)c3C)nc2c1", "C17H19N3O3S",
-    ),
-    ("Fluconazol", "CHEMBL106", "OC(Cn1cncn1)(Cn1cncn1)c1ccc(F)cc1F", "C13H12F2N6O"),
-    ("Warfarina", "CHEMBL1464", "CC(=O)CC(c1ccccc1)c1c(O)c2ccccc2oc1=O", "C19H16O4"),
+CONTROL_DRUGS: tuple[tuple[str, str, str, str, str], ...] = (
+    ("Paracetamol", "CHEMBL112", "CC(=O)NC1=CC=C(O)C=C1", "C8H9NO2", "RZVAJINKPMORJF-UHFFFAOYSA-N"),
+    ("Aspirina", "CHEMBL25", "CC(=O)OC1=CC=CC=C1C(=O)O", "C9H8O4", "BSYNRYMUTXBXSQ-UHFFFAOYSA-N"),
+    ("Ibuprofeno", "CHEMBL521", "CC(C)CC1=CC=C(C=C1)C(C)C(=O)O", "C13H18O2", "HEFNNWSXXWATRW-UHFFFAOYSA-N"),
+    ("Naproxeno", "CHEMBL154", "COc1ccc2cc([C@H](C)C(=O)O)ccc2c1", "C14H14O3", "CMWTZPSULFXXJA-VIFPVBQESA-N"),
+    ("Diclofenaco", "CHEMBL139", "OC(=O)Cc1ccccc1Nc1c(Cl)cccc1Cl", "C14H11Cl2NO2", "DCOPUUMXTXDBNB-UHFFFAOYSA-N"),
+    ("Metformina", "CHEMBL1431", "CN(C)C(=N)NC(=N)N", "C4H11N5", "XZWYZXLIPXDOLR-UHFFFAOYSA-N"),
+    ("Metoprolol", "CHEMBL13", "CC(C)NCC(COC1=CC=C(C=C1)CCOC)O", "C15H25NO3", "IUBSYMUCCVWXPE-UHFFFAOYSA-N"),
+    ("Propranolol", "CHEMBL27", "CC(C)NCC(COC1=CC=CC2=CC=CC=C21)O", "C16H21NO2", "AQHHHDLHHXJYJD-UHFFFAOYSA-N"),
+    ("Lidocaina", "CHEMBL79", "CCN(CC)CC(=O)Nc1c(C)cccc1C", "C14H22N2O", "NNJVILVZKWQKPM-UHFFFAOYSA-N"),
+    ("Captopril", "CHEMBL1560", "C[C@H](CS)C(=O)N1CCC[C@H]1C(=O)O", "C9H15NO3S", "FAKRSMQSSFJEIM-RQJHMYQMSA-N"),
+    ("Losartana", "CHEMBL191", "CCCCc1nc(Cl)c(CO)n1Cc1ccc(-c2ccccc2-c2nnn[nH]2)cc1", "C22H23ClN6O", "PSIFNNKUMBGKDQ-UHFFFAOYSA-N"),
+    ("Omeprazol", "CHEMBL1503", "COc1ccc2[nH]c(S(=O)Cc3ncc(C)c(OC)c3C)nc2c1", "C17H19N3O3S", "SUBDBMMJDZJVOS-UHFFFAOYSA-N"),
+    ("Fluconazol", "CHEMBL106", "OC(Cn1cncn1)(Cn1cncn1)c1ccc(F)cc1F", "C13H12F2N6O", "RFHAOTPXVQNOHP-UHFFFAOYSA-N"),
+    ("Warfarina", "CHEMBL1464", "CC(=O)CC(c1ccccc1)c1c(O)c2ccccc2oc1=O", "C19H16O4", "PJVWKTKQMONHTI-UHFFFAOYSA-N"),
     (
         "Atorvastatina", "CHEMBL1487",
-        "CC(C)c1c(C(=O)Nc2ccccc2)c(-c2ccccc2)c(-c2ccc(F)cc2)n1CC[C@@H](O)"
-        "C[C@@H](O)CC(=O)O", "C33H35FN2O5",
+        "CC(C)c1c(C(=O)Nc2ccccc2)c(-c2ccccc2)c(-"
+        "c2ccc(F)cc2)n1CC[C@@H](O)C[C@@H](O)CC(=O)O",
+        "C33H35FN2O5", "XUKUURHRXDUEBC-KAYWLYCHSA-N",
     ),
-    (
-        "Sildenafil", "CHEMBL192",
-        "CCCc1nn(C)c2c(=O)[nH]c(-c3cc(S(=O)(=O)N4CCN(C)CC4)ccc3OCC)nc12",
-        "C22H30N6O4S",
-    ),
-    ("Cafeina", "CHEMBL113", "CN1C(=O)N(C)c2ncn(C)c2C1=O", "C8H10N4O2"),
+    ("Sildenafil", "CHEMBL192", "CCCc1nn(C)c2c(=O)[nH]c(-c3cc(S(=O)(=O)N4CCN(C)CC4)ccc3OCC)nc12", "C22H30N6O4S", "BNRNXUUZRGQAQC-UHFFFAOYSA-N"),
+    ("Cafeina", "CHEMBL113", "CN1C(=O)N(C)c2ncn(C)c2C1=O", "C8H10N4O2", "RYYVLZVUVIJVGH-UHFFFAOYSA-N"),
     (
         "Amoxicilina", "CHEMBL1082",
-        "CC1(C)S[C@@H]2[C@H](NC(=O)[C@H](N)C3=CC=C(O)C=C3)C(=O)N2[C@H]1C(=O)O",
-        "C16H19N3O5S",
+        "CC1(C)S[C@@H]2[C@H](NC(=O)[C@H](N)C3=CC=C(O)C=C3)C(=O)N2[C@H]1C(=O)"
+        "O",
+        "C16H19N3O5S", "LSQZJLSUYDQPKJ-NJBDSQKTSA-N",
     ),
-    ("Dopamina", "CHEMBL59", "C1=CC(=C(C=C1CCN)O)O", "C8H11NO2"),
-    ("Clorpromazina", "CHEMBL71", "CN(C)CCCN1c2ccccc2Sc2ccc(Cl)cc21", "C17H19ClN2S"),
+    ("Dopamina", "CHEMBL59", "C1=CC(=C(C=C1CCN)O)O", "C8H11NO2", "VYFYYTLLBUKUHU-UHFFFAOYSA-N"),
+    ("Clorpromazina", "CHEMBL71", "CN(C)CCCN1c2ccccc2Sc2ccc(Cl)cc21", "C17H19ClN2S", "ZPEIMTDSQAKGNT-UHFFFAOYSA-N"),
+    ("Fenilbutazona", "CHEMBL101", "CCCCC1C(=O)N(c2ccccc2)N(c2ccccc2)C1=O", "C19H20N2O2", "VYMDGNCVAMGZFE-UHFFFAOYSA-N"),
+    ("Curcumina", "CHEMBL140", "COc1cc(/C=C/C(=O)CC(=O)/C=C/c2ccc(O)c(OC)c2)ccc1O", "C21H20O6", "VFLDPWHFBUODDF-FCXRPNKRSA-N"),
 )
 
-IDS = [name for name, _, _, _ in CONTROL_DRUGS]
+IDS = [name for name, _, _, _, _ in CONTROL_DRUGS]
 
 
 # --- Integridade do próprio conjunto de controle -------------------------------
 
 
 @pytest.mark.parametrize(
-    ("name", "chembl_id", "smiles", "formula"), CONTROL_DRUGS, ids=IDS
+    ("name", "chembl_id", "smiles", "formula", "expected_key"),
+    CONTROL_DRUGS,
+    ids=IDS,
 )
 def test_control_structure_matches_its_declared_formula(
-    name: str, chembl_id: str, smiles: str, formula: str
+    name: str, chembl_id: str, smiles: str, formula: str, expected_key: str
 ) -> None:
     """O controle precisa ser a molécula que diz ser.
 
@@ -114,10 +110,17 @@ def test_control_structure_matches_its_declared_formula(
 
 
 @pytest.mark.parametrize(
-    ("name", "chembl_id", "smiles", "formula"), CONTROL_DRUGS, ids=IDS
+    ("name", "chembl_id", "smiles", "formula", "expected_key"),
+    CONTROL_DRUGS,
+    ids=IDS,
 )
 def test_control_drug_keeps_its_identity(
-    pipeline: CurationPipeline, name: str, chembl_id: str, smiles: str, formula: str
+    pipeline: CurationPipeline,
+    name: str,
+    chembl_id: str,
+    smiles: str,
+    formula: str,
+    expected_key: str,
 ) -> None:
     """Um fármaco neutro e sem sal atravessa o pipeline sendo o mesmo composto."""
     record = pipeline.process_single(smiles, chembl_id)
@@ -127,10 +130,17 @@ def test_control_drug_keeps_its_identity(
 
 
 @pytest.mark.parametrize(
-    ("name", "chembl_id", "smiles", "formula"), CONTROL_DRUGS, ids=IDS
+    ("name", "chembl_id", "smiles", "formula", "expected_key"),
+    CONTROL_DRUGS,
+    ids=IDS,
 )
 def test_control_drug_is_idempotent(
-    pipeline: CurationPipeline, name: str, chembl_id: str, smiles: str, formula: str
+    pipeline: CurationPipeline,
+    name: str,
+    chembl_id: str,
+    smiles: str,
+    formula: str,
+    expected_key: str,
 ) -> None:
     once = pipeline.process_single(smiles, chembl_id)
     twice = pipeline.process_single(once.curated_smiles, chembl_id)
@@ -138,10 +148,17 @@ def test_control_drug_is_idempotent(
 
 
 @pytest.mark.parametrize(
-    ("name", "chembl_id", "smiles", "formula"), CONTROL_DRUGS, ids=IDS
+    ("name", "chembl_id", "smiles", "formula", "expected_key"),
+    CONTROL_DRUGS,
+    ids=IDS,
 )
 def test_defined_stereocenters_survive(
-    pipeline: CurationPipeline, name: str, chembl_id: str, smiles: str, formula: str
+    pipeline: CurationPipeline,
+    name: str,
+    chembl_id: str,
+    smiles: str,
+    formula: str,
+    expected_key: str,
 ) -> None:
     """Nenhum controle pode perder estereoquímica.
 
@@ -374,9 +391,95 @@ def test_batch_of_control_drugs_is_fully_accounted_for(
     pipeline: CurationPipeline,
 ) -> None:
     """Nenhum controle desaparece: entradas = aprovados + rejeitados."""
-    corpus = "\n".join(smiles for _, _, smiles, _ in CONTROL_DRUGS)
+    corpus = "\n".join(smiles for _, _, smiles, _, _ in CONTROL_DRUGS)
     report = pipeline.run_report(corpus, input_bytes=corpus.encode())
 
     assert report.total == len(CONTROL_DRUGS)
     assert len(report.approved) == len(CONTROL_DRUGS)
     assert report.n_unique == len(CONTROL_DRUGS), "controles são todos distintos"
+
+
+# --- Identidade congelada e sensibilidade tautomérica ---------------------------------
+
+
+@pytest.mark.parametrize(
+    ("name", "chembl_id", "smiles", "formula", "expected_key"),
+    CONTROL_DRUGS,
+    ids=IDS,
+)
+def test_pipeline_output_matches_the_frozen_inchikey(
+    pipeline: CurationPipeline,
+    name: str,
+    chembl_id: str,
+    smiles: str,
+    formula: str,
+    expected_key: str,
+) -> None:
+    """Compara contra um InChIKey verificado externamente, não contra a entrada.
+
+    Comparar a saída com ``inchikey(entrada)`` só prova que o pipeline não mudou
+    nada. Comparar com uma chave congelada, conferida contra o registro do ChEMBL,
+    prova também que o controle é a molécula certa.
+    """
+    record = pipeline.process_single(smiles, chembl_id)
+    assert record.inchikey == expected_key, name
+
+
+def test_geometric_isomers_are_not_merged(pipeline: CurationPipeline) -> None:
+    """Ácido fumárico e maleico são compostos distintos.
+
+    Regressão: a estereoquímica de ligação dupla chegava ao InChIKey como
+    ``STEREONONE``, então os dois saíam com a mesma chave e a deduplicação os
+    fundia como duplicata exata — a mesma falha que a D-07 evita para
+    enantiômeros, ocorrendo em ligação dupla.
+    """
+    from curation.dedup import CollisionType, DedupIndex
+
+    fumaric = pipeline.process_single("OC(=O)/C=C/C(=O)O", "E")
+    maleic = pipeline.process_single(r"OC(=O)/C=C\C(=O)O", "Z")
+
+    assert fumaric.inchikey != maleic.inchikey
+    assert fumaric.inchikey_block1 == maleic.inchikey_block1
+
+    index = DedupIndex()
+    index.add(fumaric)
+    collision = index.add(maleic)
+
+    assert index.unique_count == 2
+    assert collision is not None
+    assert collision.collision_type is CollisionType.BLOCK1_COLLISION
+
+
+def test_double_bond_stereo_survives_the_pipeline(
+    pipeline: CurationPipeline,
+) -> None:
+    for smiles in (
+        "OC(=O)/C=C/C(=O)O",
+        r"OC(=O)/C=C\C(=O)O",
+        "COc1cc(/C=C/C(=O)CC(=O)/C=C/c2ccc(O)c(OC)c2)ccc1O",
+    ):
+        record = pipeline.process_single(smiles, "EZ")
+        assert record.inchikey == inchikey(smiles), smiles
+
+
+def test_dicarbonyl_controls_detect_tautomer_canonicalization() -> None:
+    """Os controles precisam ser capazes de flagrar uma regressão da D-04.
+
+    A canonicalização tautomérica do RDKit apaga estereoquímica sp3 e reescreve
+    1,3-dicarbonílicos. Sem um controle sensível a isso, a suíte inteira passaria
+    com a política trocada.
+    """
+    from rdkit.Chem.MolStandardize import rdMolStandardize
+
+    enumerator = rdMolStandardize.TautomerEnumerator()
+    sensitive = []
+    for name, _, smiles, _, expected_key in CONTROL_DRUGS:
+        mol = Chem.MolFromSmiles(smiles)
+        if Chem.MolToInchiKey(enumerator.Canonicalize(mol)) != expected_key:
+            sensitive.append(name)
+
+    assert "Fenilbutazona" in sensitive
+    assert len(sensitive) >= 2, (
+        "o conjunto precisa de mais de um controle sensível à tautomeria; "
+        f"sensíveis hoje: {sensitive}"
+    )
