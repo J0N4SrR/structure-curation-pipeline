@@ -132,7 +132,7 @@ def graph_payload(graph: GraphContract, selected: Optional[str]) -> dict:
     }
 
 
-_component = components.declare_component("curation_dag", path=str(_FRONTEND))
+_component = components.declare_component("curation_dag", path=str(_FRONTEND / "dist"))
 
 
 def render_dag(
