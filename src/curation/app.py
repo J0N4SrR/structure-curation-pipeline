@@ -1,12 +1,11 @@
-"""Interface Streamlit (Wizard UI) para o Structure Curation Pipeline.
+"""Interface Streamlit - Workspace Científico de Curadoria Estrutural.
 
-Organizada como um Workspace contínuo, simulando a execução ao vivo do pipeline
-(estilo Kubeflow / Nextflow Tower).
+Cards reativos de pipeline com progressão sequencial em tempo real,
+popovers discretos para parâmetros e downloads, e inspeção molecular detalhada.
 """
 
 from __future__ import annotations
 
-import json
 import time
 from pathlib import Path
 from typing import Optional
@@ -24,21 +23,17 @@ except ImportError as _error:
     DRAWING_AVAILABLE = False
     DRAWING_ERROR = str(_error)
 
-from streamlit_flow import streamlit_flow
-from curation.components.dag import build_live_dag_state, ORDERED_STAGES
 from curation.filters import EligibilityCriteria
 from curation.io import compute_policy_hash, preview_input
 from curation.pipeline import CurationPipeline
-from curation.viewmodel import NodeContract, RunViewModel, build_run_view
+from curation.models import Stage
 from curation.reporting import (
     DEDUP_STAGE,
     RunReport,
-    StageReport,
     StageStatus,
     full_csv,
     rejected_csv,
     reproducibility_package,
-    run_manifest,
     to_csv,
 )
 
@@ -46,8 +41,18 @@ RDLogger.DisableLog("rdApp.*")
 
 DEFAULT_DECISIONS = Path("docs/decisions.md")
 
+PIPELINE_STAGES = [
+    ("PARSE", "Leitura e Validação Sintática"),
+    ("STANDARDIZE", "Padronização e Neutralização (ChEMBL)"),
+    ("GET_PARENT", "Estrutura-Mãe e Desagregação de Sais"),
+    ("VALENCE_GATE", "Portão Estrito de Valência"),
+    ("ELIGIBILITY", "Filtros de Escopo Químico (MW / Átomos Pesados)"),
+    ("CANONICALIZE", "Identidade Canônica e InChIKey"),
+    (DEDUP_STAGE, "Deduplicação Estrutural"),
+]
+
+
 def render_mol_image(smiles: Optional[str], legend: str = "", size: tuple[int, int] = (250, 250)):
-    """Gera uma imagem 2D da molécula via RDKit caso o RDKit esteja disponível."""
     if not smiles or not DRAWING_AVAILABLE or Draw is None:
         return None
     try:
@@ -58,43 +63,68 @@ def render_mol_image(smiles: Optional[str], legend: str = "", size: tuple[int, i
         pass
     return None
 
+
 def inject_styles() -> None:
     st.markdown(
         """
         <style>
           .block-container {
-            max-width: 900px;
+            max-width: 1000px;
             padding-top: 1.5rem;
             padding-bottom: 3rem;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
           }
           
-          .section-card {
-            border: 1px solid rgba(128, 128, 128, 0.25);
-            border-radius: 12px;
-            padding: 1.5rem;
-            margin-bottom: 1.5rem;
-            background: rgba(255, 255, 255, 0.02);
-            backdrop-filter: blur(8px);
-          }
-          .section-title {
-            font-size: 1.25rem;
-            font-weight: 800;
-            letter-spacing: -0.02em;
-            margin-bottom: 0.5rem;
+          /* Cards Científicos do Pipeline */
+          .pipeline-card {
+            background: #0F172A;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 12px 18px;
+            margin-bottom: 8px;
+            font-family: ui-monospace, monospace;
+            font-size: 12px;
             display: flex;
+            justify-content: space-between;
             align-items: center;
-            gap: 0.5rem;
           }
-          .section-sub {
-            font-size: 0.88rem;
-            opacity: 0.75;
-            margin-bottom: 1rem;
+          .card-running {
+            border: 2px solid #0284C7;
+            box-shadow: 0 0 14px rgba(2, 132, 199, 0.45);
+            background: #0F172A;
+          }
+          .card-success {
+            border-left: 6px solid #10B981;
+          }
+          .card-warning {
+            border-left: 6px solid #F59E0B;
+          }
+          .badge-running {
+            background: #0284C7;
+            color: #FFFFFF;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: 700;
+          }
+          .badge-success {
+            background: #065F46;
+            color: #34D399;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: 700;
+          }
+          .badge-warning {
+            background: #78350F;
+            color: #FBBF24;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: 700;
           }
         </style>
         """,
         unsafe_allow_html=True,
     )
+
 
 def init_session_state() -> None:
     if "raw_input" not in st.session_state:
@@ -113,82 +143,158 @@ def init_session_state() -> None:
         }
     if "report" not in st.session_state:
         st.session_state["report"] = None
-    if "stage_live_states" not in st.session_state:
-        st.session_state["stage_live_states"] = {
-            s[0]: {"status": StageStatus.PENDING, "in": "-", "out": "-", "rej": "-"}
-            for s in ORDERED_STAGES
-        }
-    if "selected_node" not in st.session_state:
-        st.session_state["selected_node"] = None
-    if "run_view" not in st.session_state:
-        st.session_state["run_view"] = None
+    if "completed_cards" not in st.session_state:
+        st.session_state["completed_cards"] = []
+    if "inspect_stage" not in st.session_state:
+        st.session_state["inspect_stage"] = None
 
-def execute_pipeline_live(dag_container):
+
+def render_card_html(stage_id: str, label: str, status: str, n_in: any, n_out: any, n_rej: any) -> str:
+    if status == "RUNNING":
+        css_class = "pipeline-card card-running"
+        badge = '<span class="badge-running">RUNNING</span>'
+    elif status == "WARNING":
+        css_class = "pipeline-card card-warning"
+        badge = '<span class="badge-warning">WARNING</span>'
+    elif status == "SUCCESS":
+        css_class = "pipeline-card card-success"
+        badge = '<span class="badge-success">COMPLETED</span>'
+    else:
+        css_class = "pipeline-card"
+        badge = '<span style="color: #64748B;">PENDING</span>'
+
+    metrics = f"<span>IN: <b>{n_in}</b> &nbsp;|&nbsp; OUT: <b>{n_out}</b> &nbsp;|&nbsp; REJ: <b>{n_rej}</b></span>"
+    return f"""
+    <div class="{css_class}">
+        <div>
+            <span style="font-weight: 700; color: #F8FAFC; margin-right: 12px;">[{stage_id}]</span>
+            <span style="color: #94A3B8;">{label}</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 20px;">
+            {metrics}
+            {badge}
+        </div>
+    </div>
+    """
+
+
+def execute_pipeline_live(cards_placeholder):
     raw = st.session_state["raw_input"]
     cfg = st.session_state["config"]
-    
+    name = st.session_state["input_name"]
+
     pipeline = CurationPipeline(
         policy_hash=cfg["policy_hash"],
-        criteria=EligibilityCriteria(max_molecular_weight=cfg["max_mw"], max_heavy_atoms=cfg["max_ha"]),
+        criteria=EligibilityCriteria(
+            max_molecular_weight=cfg["max_mw"],
+            max_heavy_atoms=cfg["max_ha"]
+        ),
         deduplicate=cfg["deduplicate"]
     )
 
-    # Inicializa todos como PENDING
-    states = {s[0]: {"status": StageStatus.PENDING, "in": "-", "out": "-", "rej": "-"} for s in ORDERED_STAGES}
-
-    # Executa a curadoria real para obter as métricas do motor
+    # 1. Executa a curadoria real no backend
     report = pipeline.run_report(
         raw.decode("utf-8", errors="replace"),
         parameters=cfg,
         input_bytes=raw,
-        input_name=st.session_state["input_name"],
+        input_name=name,
         policy_path=cfg["policy_path"],
     )
-    
-    stage_reports = {s.name: s for s in report.stages}
+
+    stage_map = {s.name: s for s in report.stages}
     if report.dedup:
-        stage_reports["DEDUPLICATION"] = report.dedup
+        stage_map[DEDUP_STAGE] = report.dedup
 
-    # Animação passo a passo dos nós
-    for idx, (stage_id, label) in enumerate(ORDERED_STAGES):
-        # Marca estágio como RUNNING (Azul, pulsante, aresta animada)
-        states[stage_id]["status"] = StageStatus.RUNNING
-        dag_container.empty()
-        with dag_container:
-            streamlit_flow(f"step_run_{idx}", build_live_dag_state(states), height=360, fit_view=True, show_controls=False)
-        
-        # Pausa cadenciada para percepção do processamento científico
-        time.sleep(0.5)
+    rendered_cards = []
 
-        # Atualiza métricas reais e marca como SUCCESS / WARNING
-        rep = stage_reports.get(stage_id)
-        if rep:
-            status = StageStatus.WARNING if rep.has_exclusions else StageStatus.SUCCESS
-            states[stage_id] = {
-                "status": status,
-                "in": rep.n_input,
-                "out": rep.n_output,
-                "rej": rep.n_excluded
-            }
-        else:
-            states[stage_id]["status"] = StageStatus.SUCCESS
+    # 2. Faz os cards surgirem sequencialmente na tela
+    for stage_id, label in PIPELINE_STAGES:
+        # Mostra o nó atual como RUNNING
+        running_html = render_card_html(stage_id, label, "RUNNING", "-", "-", "-")
+        cards_placeholder.markdown("".join(rendered_cards + [running_html]), unsafe_allow_html=True)
+        time.sleep(0.55)
 
-        dag_container.empty()
-        with dag_container:
-            streamlit_flow(f"step_done_{idx}", build_live_dag_state(states), height=360, fit_view=True, show_controls=False)
+        # Atualiza métricas reais e fixa como finalizado
+        rep = stage_map.get(stage_id)
+        n_in = rep.n_input if rep else "-"
+        n_out = rep.n_output if rep else "-"
+        n_rej = rep.n_excluded if rep else 0
+        status = "WARNING" if (rep and rep.has_exclusions) else "SUCCESS"
 
-        time.sleep(0.4)
+        done_html = render_card_html(stage_id, label, status, n_in, n_out, n_rej)
+        rendered_cards.append(done_html)
+        cards_placeholder.markdown("".join(rendered_cards), unsafe_allow_html=True)
+        time.sleep(0.2)
 
-    st.session_state["stage_live_states"] = states
+    st.session_state["completed_cards"] = rendered_cards
     st.session_state["report"] = report
-    st.session_state["run_view"] = build_run_view(report)
-    st.session_state["selected_node"] = None
+
 
 def render_workbench():
-    top_bar = st.container()
+    # --- 1. BARRA SUPERIOR DE AÇÕES E POPOVERS ---
+    col_title, col_cfg, col_dl, col_run = st.columns([5, 1, 1, 2])
 
-    # 2. Área de Entrada de Dados (Expansível / Compacta)
-    with st.expander("📂 Ingestão de Moléculas (SMILES) ou Upload", expanded=(st.session_state.get("raw_input") is None)):
+    with col_title:
+        st.markdown("### ⚗️ Structure Curation Pipeline")
+        st.caption(f"Política ativa: `{st.session_state['config']['policy_hash'][:16]}...`")
+
+    # POPOVER: Configurações do Pipeline (ESCONDIDO)
+    with col_cfg:
+        with st.popover("⚙️", help="Configuração do Pipeline"):
+            st.markdown("##### ⚙️ Parâmetros do Estudo")
+            st.session_state["config"]["max_mw"] = st.number_input(
+                "Massa Molecular Máx. (Da)", value=st.session_state["config"]["max_mw"], step=50.0
+            )
+            st.session_state["config"]["max_ha"] = st.number_input(
+                "Átomos Pesados Máx.", value=st.session_state["config"]["max_ha"], step=5
+            )
+            st.session_state["config"]["deduplicate"] = st.checkbox(
+                "Deduplicação InChIKey", value=st.session_state["config"]["deduplicate"]
+            )
+
+    # POPOVER: Opções de Download (ESCONDIDO)
+    with col_dl:
+        report: Optional[RunReport] = st.session_state.get("report")
+        with st.popover("📥", help="Opções de Download"):
+            st.markdown("##### 📥 Exportar Resultados")
+            if report:
+                st.download_button(
+                    "📄 Dataset Curado (CSV)",
+                    to_csv(report.approved, ("input_id", "raw_smiles", "curated_smiles", "inchikey", "status")),
+                    file_name="curated_structures.csv",
+                    mime="text/csv",
+                    width="stretch"
+                )
+                st.download_button(
+                    "📄 Dataset Rejeitado (CSV)",
+                    rejected_csv(report),
+                    file_name="rejected_structures.csv",
+                    mime="text/csv",
+                    width="stretch"
+                )
+                st.download_button(
+                    "📊 Log de Auditoria Completo (CSV)",
+                    full_csv(report),
+                    file_name="audit_log.csv",
+                    mime="text/csv",
+                    width="stretch"
+                )
+                st.download_button(
+                    "📦 Pacote de Reprodutibilidade (ZIP)",
+                    reproducibility_package(report),
+                    file_name=f"curation_{report.provenance.run_id[:8]}.zip",
+                    mime="application/zip",
+                    width="stretch"
+                )
+            else:
+                st.caption("Execute o pipeline para disponibilizar downloads.")
+
+    with col_run:
+        can_run = st.session_state.get("raw_input") is not None
+        start_btn = st.button("▶ Executar Pipeline", type="primary", disabled=not can_run, width="stretch")
+
+    # --- 2. ÁREA DE ENTRADA (UPLOAD / SMILES) ---
+    with st.expander("📂 Ingestão de Moléculas (SMILES)", expanded=(st.session_state.get("raw_input") is None)):
         tab_paste, tab_file = st.tabs(["Cole SMILES", "Upload de Arquivo"])
         raw_bytes: Optional[bytes] = None
         input_name = ""
@@ -196,10 +302,9 @@ def render_workbench():
         with tab_paste:
             text = st.text_area(
                 "SMILES Input",
-                height=140,
+                height=120,
                 placeholder="CCO\nCC(=O)O[Na]\nN[C@@H](C)C(=O)O.Cl\nc1ccccc1",
-                label_visibility="collapsed",
-                help="Cole um código SMILES por linha",
+                label_visibility="collapsed"
             )
             if text.strip():
                 raw_bytes = text.encode("utf-8")
@@ -207,10 +312,9 @@ def render_workbench():
 
         with tab_file:
             uploaded = st.file_uploader(
-                "Enviar arquivo",
+                "Arquivo de estruturas",
                 type=["csv", "tsv", "smi", "smiles", "txt"],
-                label_visibility="collapsed",
-                help="Envie um arquivo contendo estruturas químicas (.csv, .tsv, .smi)",
+                label_visibility="collapsed"
             )
             if uploaded is not None:
                 raw_bytes = uploaded.getvalue()
@@ -219,327 +323,113 @@ def render_workbench():
         if raw_bytes:
             try:
                 preview = preview_input(raw_bytes.decode("utf-8", errors="replace"))
-                total_detected = preview.total
-            except Exception as e:
-                total_detected = 0
-
-            if total_detected > 0:
-                st.success(f"✓ **{input_name}** ({total_detected} moléculas detectadas)")
-                st.session_state["raw_input"] = raw_bytes
-                st.session_state["input_name"] = input_name
-            else:
-                st.error(f"**Input inválido:** Não foi possível detectar estruturas válidas em '{input_name}'. Verifique o formato do arquivo.")
-                st.session_state["raw_input"] = None
-        elif st.session_state.get("raw_input") and not text.strip() and not uploaded:
-             st.success(f"✓ **{st.session_state['input_name']}** pronto para execução.")
-
-    with top_bar:
-        # 1. Barra de Ações Superior (Estilo Kubeflow Workspace)
-        col_info, col_cfg, col_dl, col_action = st.columns([5, 1, 1, 2])
-        
-        with col_info:
-            st.markdown("### ⚗️ Workspace de Curadoria Estrutural")
-            st.caption(f"Política Ativa: `{st.session_state['config']['policy_hash'][:16]}...`")
-
-        # Ícone de Engrenagem (Configuração do Pipeline)
-        with col_cfg:
-            with st.popover("⚙️", help="Configurações e Parâmetros"):
-                st.markdown("##### ⚙️ Parâmetros do Estudo")
-                st.session_state["config"]["max_mw"] = st.number_input(
-                    "Massa Molecular Máx.", value=st.session_state["config"]["max_mw"]
-                )
-                st.session_state["config"]["max_ha"] = st.number_input(
-                    "Átomos Pesados Máx.", value=st.session_state["config"]["max_ha"]
-                )
-                st.session_state["config"]["deduplicate"] = st.checkbox(
-                    "Deduplicação InChIKey", value=st.session_state["config"]["deduplicate"]
-                )
-
-        # Ícone de Download (Artefatos da Execução)
-        with col_dl:
-            report = st.session_state.get("report")
-            with st.popover("📥", help="Opções de Download"):
-                st.markdown("##### 📥 Exportação de Artefatos")
-                if report:
-                    st.download_button(
-                        "📄 Dataset Curado (CSV)",
-                        to_csv(report.approved, ("input_id", "raw_smiles", "curated_smiles", "inchikey", "status")),
-                        file_name="curated_structures.csv",
-                        mime="text/csv",
-                        width="stretch"
-                    )
-                    st.download_button(
-                        "📄 Dataset Rejeitado (CSV)",
-                        rejected_csv(report),
-                        file_name="rejected_structures.csv",
-                        mime="text/csv",
-                        width="stretch"
-                    )
-                    st.download_button(
-                        "📊 Log de Auditoria (CSV)",
-                        full_csv(report),
-                        file_name="audit_log.csv",
-                        mime="text/csv",
-                        width="stretch"
-                    )
-                    st.download_button(
-                        "📦 Pacote ZIP",
-                        reproducibility_package(report),
-                        file_name=f"curation_pkg_{report.provenance.run_id[:8]}.zip",
-                        mime="application/zip",
-                        width="stretch"
-                    )
+                if preview.total > 0:
+                    st.success(f"✓ **{input_name}** ({preview.total} moléculas detectadas)")
+                    st.session_state["raw_input"] = raw_bytes
+                    st.session_state["input_name"] = input_name
                 else:
-                    st.caption("Nenhum dado disponível. Execute o pipeline primeiro.")
+                    st.error("Nenhuma estrutura válida detectada.")
+                    st.session_state["raw_input"] = None
+            except Exception:
+                st.session_state["raw_input"] = None
 
-        with col_action:
-            can_run = st.session_state.get("raw_input") is not None
-            run_btn = st.button("▶ Executar Pipeline", type="primary", disabled=not can_run, width="stretch")
-
-    # 3. Canvas do DAG (O Grafo Vivo)
     st.markdown("---")
-    dag_placeholder = st.empty()
 
-    # Se clicou em executar: aciona o ciclo reativo passo a passo
-    if run_btn:
-        execute_pipeline_live(dag_placeholder)
+    # --- 3. CARDS DO PIPELINE (PROGRESSÃO EM TEMPO REAL) ---
+    cards_slot = st.empty()
 
-    # Renderização estática do frame atual / interatividade pós-execução
-    flow_state = build_live_dag_state(
-        st.session_state["stage_live_states"],
-        selected_node=st.session_state.get("selected_node")
-    )
-    with dag_placeholder:
-        updated = streamlit_flow(
-            "curation_final_dag",
-            flow_state,
-            height=360,
-            fit_view=True,
-            get_node_on_click=True,
-            show_controls=True
-        )
-        # Handle selection logic only if execution is finished (report exists)
-        if updated and st.session_state.get("report") is not None:
-            if updated.selected_id != st.session_state.get("selected_node"):
-                st.session_state["selected_node"] = updated.selected_id
-                st.rerun()
+    if start_btn:
+        execute_pipeline_live(cards_slot)
+    elif st.session_state["completed_cards"]:
+        cards_slot.markdown("".join(st.session_state["completed_cards"]), unsafe_allow_html=True)
+    else:
+        # Estado Inicial: Cards cinzas aguardando início
+        initial_html = [
+            render_card_html(s_id, s_label, "PENDING", "-", "-", "-")
+            for s_id, s_label in PIPELINE_STAGES
+        ]
+        cards_slot.markdown("".join(initial_html), unsafe_allow_html=True)
 
-    # 4. Detalhes contextuais do nó clicado (Structure Lineage e Métricas)
+    # --- 4. DETALHES ANALÍTICOS (APÓS A CONCLUSÃO) ---
     if st.session_state.get("report"):
-        selecionado = st.session_state.get("selected_node")
-        
-        # Botão para limpar a seleção
-        if selecionado:
-            if st.button("Voltar ao resumo da execução", width="stretch"):
-                st.session_state["selected_node"] = None
-                st.rerun()
-                
-        if selecionado:
-            view = st.session_state["run_view"]
-            node = view.graph.node(selecionado) if selecionado else None
-            if node:
-                render_node_details(node, st.session_state["report"])
-        else:
-            render_run_details(st.session_state["run_view"], st.session_state["report"])
-
-
-def render_run_details(view: RunViewModel, report: RunReport) -> None:
-    """Resumo global, exibido quando nenhum no esta selecionado."""
-    st.markdown(f"#### Detalhes da Execução {view.glyph} {view.status_text}")
-    st.caption(
-        "Nenhum estágio selecionado. Clique em um nó do grafo para ver o que "
-        "aconteceu nele."
-    )
-    
-    tab_overview, tab_lineage = st.tabs(["Visão Geral", "Linhagem de Estruturas"])
-    
-    with tab_overview:
-        a, b, c, d = st.columns(4)
-        a.metric("Entrada", view.input_count, help="Total de estruturas químicas processadas nesta execução.")
-        b.metric("Aprovadas", view.approved, help="Total de estruturas que passaram por todos os testes e estão no dataset final.")
-        c.metric("Rejeitadas", view.rejected, help="Total de estruturas reprovadas e enviadas para o dataset rejeitado.")
-        d.metric("Taxa de Aprovação", f"{view.approval_rate:.0%}", help="Porcentagem de estruturas processadas que foram aprovadas.")
-
-        e, f, g = st.columns(3)
-        e.metric("Transformadas", view.transformed, help="Número de estruturas cujos átomos, ligações ou cargas foram modificados.")
-        f.metric("Duplicatas", view.duplicates, help="Número de duplicatas estruturais exatas encontradas (baseado no InChIKey).")
-        g.metric(
-            "Duração",
-            f"{view.duration_seconds:.2f} s" if view.duration_seconds else "-",
-            help="Tempo real (wall-clock time) para executar todos os estágios do pipeline."
-        )
-
         st.markdown("---")
-        st.markdown("#### Reprodutibilidade e Manifesto")
-        prov = report.provenance
-        
-        with st.expander("📦 Comando de Reprodução (CLI) e Ambiente", expanded=True):
-            st.code(prov.reproduction_command(input_path=prov.input_name), language="bash")
-            
-            env_col1, env_col2 = st.columns(2)
-            with env_col1:
-                st.markdown("**Sistema**")
-                st.json(prov.environment)
-            with env_col2:
-                st.markdown("**Bibliotecas**")
-                st.json(prov.versions)
-                
-            if not prov.reproducible:
-                st.warning("Esta execução possui bloqueadores de reprodução exata:")
-                for blocker in prov.reproduction_blockers():
-                    st.markdown(f"- {blocker}")
+        render_audit_details(st.session_state["report"])
 
+
+def render_audit_details(report: RunReport):
+    tab_overview, tab_lineage, tab_reproducibility = st.tabs([
+        "Visão Geral", "Linhagem Molecular (2D)", "Manifesto de Reprodutibilidade"
+    ])
+
+    with tab_overview:
+        kpis = report.kpis()
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Total Processado", kpis["Total Processed"])
+        col2.metric("Aprovadas", kpis["Approved"])
+        col3.metric("Rejeitadas", kpis["Rejected"])
+        col4.metric("Avisos / Transformadas", kpis["Warnings"])
+
+        st.markdown("##### Exclusões por Motivo")
+        exclusions = report.exclusion_groups()
+        if exclusions:
+            st.dataframe(
+                [{"Motivo": g.reason, "Estágio": g.stage, "Quantidade": g.count} for g in exclusions],
+                width="stretch",
+                hide_index=True
+            )
+        else:
+            st.success("Nenhuma estrutura foi excluída neste lote.")
 
     with tab_lineage:
-        render_structure_lineage(report)
-
-
-def render_structure_lineage(report: RunReport) -> None:
-    st.caption("Selecione uma molécula para auditar sua linhagem completa de transformações e renderização 2D.")
-
-    if not report.records:
-        st.info("Nenhuma estrutura disponível.")
-        return
-
-    filter_opt = st.radio(
-        "Filtrar moléculas",
-        ["Todas", "Apenas Aprovadas", "Apenas Rejeitadas"],
-        horizontal=True,
-        label_visibility="collapsed",
-        help="Filtra a lista de moléculas com base no status final da execução.",
-    )
-
-    if filter_opt == "Apenas Aprovadas":
-        records_to_show = [r for r in report.records if r.passed]
-    elif filter_opt == "Apenas Rejeitadas":
-        records_to_show = [r for r in report.records if not r.passed]
-    else:
-        records_to_show = report.records
-
-    if not records_to_show:
-        st.info("Nenhuma estrutura encontrada para o filtro selecionado.")
-        return
-
-    options_map = {
-        f"{r.input_id} | Status: {r.status} | SMILES: {r.raw_smiles[:30]}": r
-        for r in records_to_show
-    }
-    selected_key = st.selectbox(
-        "Selecione uma molécula para auditar:",
-        options=list(options_map.keys()),
-        help="Pesquise ou selecione uma molécula pelo SMILES original ou identificador.",
-    )
-    selected_rec = options_map[selected_key]
-
-    st.markdown(f"#### Molécula {selected_rec.input_id}")
-
-    status_color = "#1e8e3e" if selected_rec.passed else "#d93025"
-    st.markdown(
-        f"**Status final:** <span style='color:{status_color}; font-weight:800;'>{selected_rec.status}</span>",
-        unsafe_allow_html=True,
-    )
-
-    if not selected_rec.passed:
-        st.warning(
-            f"**Motivo do descarte:** Estágio `{selected_rec.rejection_stage}` | Código `{selected_rec.rejection_code}`\n\n"
-            f"**Detalhe:** {selected_rec.rejection_detail or 'Sem detalhe adicional'}"
+        records = report.records
+        filter_type = st.radio(
+            "Filtrar:", ["Todas", "Apenas Aprovadas", "Apenas Rejeitadas"],
+            horizontal=True, label_visibility="collapsed"
         )
+        if filter_type == "Apenas Aprovadas":
+            records = [r for r in records if r.passed]
+        elif filter_type == "Apenas Rejeitadas":
+            records = [r for r in records if not r.passed]
 
-    img_col1, img_col2 = st.columns(2)
-    with img_col1:
-        st.markdown("**SMILES de Entrada (Original):**")
-        st.code(selected_rec.raw_smiles, language="text")
-        img_in = render_mol_image(selected_rec.raw_smiles, legend="Entrada")
-        if img_in:
-            st.image(img_in, width=240)
+        if not records:
+            st.info("Nenhuma estrutura encontrada para o filtro.")
+            return
 
-    with img_col2:
-        st.markdown("**SMILES Curado (Canônico / Mãe):**")
-        if selected_rec.curated_smiles:
-            st.code(selected_rec.curated_smiles, language="text")
-            img_out = render_mol_image(selected_rec.curated_smiles, legend="Curada")
-            if img_out:
-                st.image(img_out, width=240)
-        else:
-            st.info("Estrutura não possui SMILES curado (foi rejeitada).")
+        rec_dict = {f"{r.input_id} | {r.status} | {r.raw_smiles[:30]}": r for r in records}
+        selected_key = st.selectbox("Selecione a molécula para auditar:", list(rec_dict.keys()))
+        rec = rec_dict[selected_key]
 
-    st.markdown("##### 🧬 Linhagem de Transformações (Timeline)")
-    if selected_rec.transformations:
-        for idx, t in enumerate(selected_rec.transformations):
-            with st.expander(f"Step {idx+1}: {t.stage.value} — {t.rule}", expanded=True):
-                if t.detail:
-                    st.info(t.detail)
-                c1, c2 = st.columns(2)
-                with c1:
-                    st.markdown("**Antes:**")
-                    st.code(t.before_smiles, language="text")
-                    img_b = render_mol_image(t.before_smiles, size=(200, 200))
-                    if img_b:
-                        st.image(img_b, width=200)
-                with c2:
-                    st.markdown("**Depois:**")
-                    st.code(t.after_smiles, language="text")
-                    img_a = render_mol_image(t.after_smiles, size=(200, 200))
-                    if img_a:
-                        st.image(img_a, width=200)
-    else:
-        st.caption("Nenhuma transformação alterou a conectividade desta molécula.")
+        col_in, col_out = st.columns(2)
+        with col_in:
+            st.markdown("**Entrada Bruta:**")
+            st.code(rec.raw_smiles, language="text")
+            img_in = render_mol_image(rec.raw_smiles, legend="Entrada")
+            if img_in:
+                st.image(img_in, width=220)
 
-    if selected_rec.inchikey:
-        st.caption(f"**InChIKey:** `{selected_rec.inchikey}`")
-    if selected_rec.removed_fragments:
-        st.caption(f"**Fragmentos/Sais removidos:** `{selected_rec.removed_fragments}`")
-    if selected_rec.delta_net_charge != 0:
-        st.caption(f"**Variação de carga líquida:** `{selected_rec.delta_net_charge}`")
+        with col_out:
+            st.markdown("**Estrutura-Mãe (Curada):**")
+            if rec.curated_smiles:
+                st.code(rec.curated_smiles, language="text")
+                img_out = render_mol_image(rec.curated_smiles, legend="Curada")
+                if img_out:
+                    st.image(img_out, width=220)
+            else:
+                st.caption("Estrutura rejeitada (sem SMILES curado).")
 
+        if rec.transformations:
+            st.markdown("##### Eventos de Transformação Registrados")
+            for t in rec.transformations:
+                st.info(f"**[{t.stage.value}]** {t.rule} — {t.detail}")
 
-def render_node_details(node: NodeContract, report: RunReport) -> None:
-    """Detalhe contextual do no selecionado."""
-    st.markdown(f"#### {node.label}  {node.glyph} {node.status_text}")
-    st.caption(node.help_text)
-
-    a, b, c, d, e = st.columns(5)
-    a.metric("Entrada", node.input_count, help="Quantidade de estruturas recebidas na entrada do estágio.")
-    b.metric("Resultado", node.output_count, help="Quantidade de estruturas que avançaram para o próximo estágio.")
-    c.metric("Transformadas", node.transformed_count, help="Estruturas quimicamente modificadas neste estágio.")
-    d.metric("Removidas", node.rejected_count, help="Estruturas removidas e enviadas para o dataset de rejeitadas.")
-    e.metric(
-        "Duração",
-        f"{node.duration_seconds * 1000:.0f} ms" if node.duration_seconds else "-",
-        help="Tempo computacional gasto na execução exclusiva deste nó."
-    )
-
-    if node.parameters:
-        with st.expander("Parâmetros que governam este estágio"):
-            st.json(node.parameters)
-
-    if node.exclusions:
-        st.markdown("##### O que foi removido aqui")
-        st.dataframe(
-            [
-                {"Motivo": group.reason, "Quantidade": group.count}
-                for group in node.exclusions
-            ],
-            hide_index=True,
-            width="stretch",
-        )
-
-    for artifact in node.artifacts:
-        registros = report.records_by_id(artifact.record_ids)
-        st.download_button(
-            f"{artifact.name} ({artifact.count})",
-            to_csv(
-                registros,
-                ("input_id", "raw_smiles", "rejection_code", "rejection_detail"),
-            ),
-            file_name=artifact.name,
-            mime="text/csv",
-            help=artifact.description,
-            key=f"artifact_{node.id}_{artifact.name}",
-        )
-
-    if not node.exclusions and not node.artifacts:
-        st.success("Nenhuma estrutura foi removida neste estagio.")
+    with tab_reproducibility:
+        prov = report.provenance
+        st.code(prov.reproduction_command(input_path=prov.input_name), language="bash")
+        c1, c2 = st.columns(2)
+        with c1:
+            st.json(prov.environment)
+        with c2:
+            st.json(prov.versions)
 
 
 def main() -> None:
