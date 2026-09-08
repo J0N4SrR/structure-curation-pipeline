@@ -307,13 +307,13 @@ def render_input_summary(raw: bytes, name: str) -> None:
     with st.expander("Ver dados de entrada"):
         st.dataframe(
             [{"Identificador": i, "Estrutura": s} for i, s in preview.head],
-            use_container_width=True, hide_index=True,
+            width="stretch", hide_index=True,
         )
         if preview.invalid:
             st.markdown("**Estruturas que precisam de atenção**")
             st.dataframe(
                 [{"Identificador": i, "Estrutura": s} for i, s in preview.invalid],
-                use_container_width=True, hide_index=True,
+                width="stretch", hide_index=True,
             )
 
 
@@ -486,7 +486,7 @@ def render_stage_detail(report: RunReport, name: str) -> None:
                     }
                     for r in removed
                 ],
-                use_container_width=True, hide_index=True,
+                width="stretch", hide_index=True,
             )
 
     with st.expander("Parâmetros usados nesta execução"):
@@ -513,7 +513,7 @@ def render_exclusions(report: RunReport) -> None:
             }
             for group in groups
         ],
-        use_container_width=True, hide_index=True,
+        width="stretch", hide_index=True,
     )
 
     options = [f"{label_reason(g.reason)} — {g.count}" for g in groups]
@@ -530,7 +530,7 @@ def render_exclusions(report: RunReport) -> None:
             }
             for r in affected
         ],
-        use_container_width=True, hide_index=True,
+        width="stretch", hide_index=True,
     )
     st.download_button(
         "Baixar estas estruturas (CSV)",
@@ -661,7 +661,7 @@ def render_results(report: RunReport) -> None:
             }
             for r in selected
         ],
-        use_container_width=True, hide_index=True,
+        width="stretch", hide_index=True,
     )
 
 
@@ -839,7 +839,7 @@ def main() -> None:
     st.divider()
     if st.button(
         "▶ Executar curadoria", type="primary", disabled=raw is None,
-        use_container_width=False,
+        width="content",
     ):
         st.session_state["report"] = execute(raw, name, configuration)
         st.rerun()

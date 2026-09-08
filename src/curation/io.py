@@ -276,12 +276,15 @@ def read_input(source: Source) -> Generator[tuple[str, str], None, None]:
 
     counter = 0
     for row in _chain_rows(data_rows, lines, delimiter):
-        if smiles_index >= len(row):
-            continue
-        smiles = row[smiles_index].strip()
-        if not smiles:
+        smiles = row[smiles_index].strip() if smiles_index < len(row) else ""
+        if not smiles and not any(cell.strip() for cell in row):
+            # Linha inteiramente vazia: separador de arquivo, não dado.
             continue
 
+        # Uma linha com conteúdo em outras colunas mas sem estrutura **é** um
+        # registro. Descartá-la aqui alinharia mal a saída com a entrada e faria
+        # um dado sumir sem decisão registrada; ela segue para o pipeline, que a
+        # rejeita com ERR_EMPTY.
         counter += 1
         identifier = ""
         if id_index is not None and id_index < len(row):

@@ -332,3 +332,40 @@ def test_policy_hash_is_stable_and_content_sensitive(tmp_path: Path) -> None:
 
     document.write_text("# ADR\nD-01 revisada\n", encoding="utf-8")
     assert compute_policy_hash(document) != original
+
+
+def test_row_with_empty_smiles_cell_is_preserved(tmp_path: Path) -> None:
+    """Alinhamento linha a linha: uma célula vazia é um registro, não um descarte.
+
+    Descartá-la na leitura fazia um dado sumir sem decisão registrada, violando a
+    regra de que nenhuma estrutura desaparece silenciosamente.
+    """
+    source = tmp_path / "com_vazio.csv"
+    source.write_text(
+        "SMILES,Tipo\nCCO,ok\n,vazio\nCCN,ok\n", encoding="utf-8"
+    )
+    rows = list(read_input(source))
+
+    assert len(rows) == 3, "as tres linhas de dados devem virar registros"
+    assert rows[1][1] == ""
+
+
+def test_fully_blank_lines_are_still_skipped(tmp_path: Path) -> None:
+    """Quebra de linha final não é dado."""
+    source = tmp_path / "trailing.smi"
+    source.write_text("CCO\n\nCCN\n\n\n", encoding="utf-8")
+    assert [s for _, s in read_input(source)] == ["CCO", "CCN"]
+
+
+def test_uppercase_smiles_header_is_detected(tmp_path: Path) -> None:
+    """Cabeçalhos são comparados em minúsculas, então ``SMILES`` casa.
+
+    E a coluna ``Tipo`` não vira identificador: só cabeçalhos reconhecidos como
+    identificador assumem esse papel, o resto recebe id gerado.
+    """
+    source = tmp_path / "maiusculas.csv"
+    source.write_text("SMILES,Tipo\nCCO,solvente\nCCN,amina\n", encoding="utf-8")
+    assert list(read_input(source)) == [
+        ("CMPD_0000001", "CCO"),
+        ("CMPD_0000002", "CCN"),
+    ]

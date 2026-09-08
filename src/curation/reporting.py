@@ -358,6 +358,13 @@ def _derived(record: CurationRecord, column: str) -> str:
 
 
 def record_row(record: CurationRecord, columns: Sequence[str]) -> dict[str, Any]:
+    """Uma linha de saída, com ``None`` preservado nos campos ausentes.
+
+    ``None`` não é convertido em string vazia de propósito. ``csv.DictWriter`` já
+    escreve célula vazia para ``None``, e preservá-lo mantém as colunas numéricas
+    homogêneas — coagir para ``""`` produz uma coluna mista de ``float`` e ``str``
+    que o Arrow recusa converter ao renderizar a tabela.
+    """
     payload = record.model_dump(mode="json")
     payload["transformations"] = json.dumps(
         payload.get("transformations", []), ensure_ascii=False
@@ -369,8 +376,7 @@ def record_row(record: CurationRecord, columns: Sequence[str]) -> dict[str, Any]
         if column in DERIVED_COLUMNS:
             row[column] = _derived(record, column)
         else:
-            value = payload.get(column, "")
-            row[column] = "" if value is None else value
+            row[column] = payload.get(column)
     return row
 
 

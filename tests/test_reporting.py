@@ -244,3 +244,32 @@ def test_run_id_is_deterministic_for_same_input() -> None:
     a = RunProvenance.start("h", {}, data)
     b = RunProvenance.start("h", {}, data)
     assert a.run_id.split("-")[1] == b.run_id.split("-")[1]
+
+
+# --- Regressões de renderização e alinhamento ----------------------------------------
+
+
+def test_numeric_columns_stay_numeric_for_arrow(report) -> None:
+    """``None`` não pode virar string: Arrow recusa colunas mistas.
+
+    Um registro rejeitado não tem peso molecular. Preencher com ``""`` produzia
+    uma coluna de ``float`` e ``str`` e quebrava a renderização da tabela inteira.
+    """
+    import pandas as pd
+    import pyarrow as pa
+
+    frame = pd.DataFrame(
+        [
+            record_row(record, ("input_id", "parent_mw", "parent_heavy_atoms"))
+            for record in report.records
+        ]
+    )
+    assert frame["parent_mw"].dtype.kind == "f"
+    pa.Table.from_pandas(frame)
+
+
+def test_csv_still_writes_empty_cells_for_missing_values(report) -> None:
+    """Preservar ``None`` não pode mudar a saída em CSV."""
+    text = to_csv(report.rejected, ("input_id", "curated_smiles", "parent_mw"))
+    body = text.splitlines()[1]
+    assert body.endswith(",,"), body
