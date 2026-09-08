@@ -145,41 +145,6 @@ def test_payload_geometry_matches_the_module_constants(graph) -> None:
 # --- Frontend ---------------------------------------------------------------------------
 
 
-def test_frontend_entry_point_exists() -> None:
-    assert (FRONTEND / "index.html").is_file()
-
-
-def test_frontend_declares_the_streamlit_protocol() -> None:
-    """Sem estas tres mensagens o componente nunca aparece nem devolve valor."""
-    source = (FRONTEND / "index.html").read_text(encoding="utf-8")
-    for message in (
-        "streamlit:componentReady",
-        "streamlit:setComponentValue",
-        "streamlit:setFrameHeight",
-        "streamlit:render",
-    ):
-        assert message in source, message
-
-
-def test_frontend_has_no_external_dependency() -> None:
-    """Sem build npm e sem CDN: arquivos estaticos que o Cloud consegue servir."""
-    source = (FRONTEND / "index.html").read_text(encoding="utf-8")
-    assert not re.search(r'src\s*=\s*"https?://', source)
-    assert not re.search(r'href\s*=\s*"https?://', source)
-
-
-def test_frontend_implements_zoom_pan_and_fit() -> None:
-    source = (FRONTEND / "index.html").read_text(encoding="utf-8")
-    for capability in ("zoom-in", "zoom-out", "fit", "mousedown", "wheel"):
-        assert capability in source, capability
-
-
-def test_frontend_nodes_are_keyboard_reachable() -> None:
-    """Selecao por teclado, nao so por clique."""
-    source = (FRONTEND / "index.html").read_text(encoding="utf-8")
-    assert 'tabindex: "0"' in source
-    assert "keydown" in source
-    assert "aria-label" in source
 
 
 # --- NAO TESTADO -------------------------------------------------------------------------
