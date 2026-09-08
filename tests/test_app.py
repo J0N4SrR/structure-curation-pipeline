@@ -82,7 +82,7 @@ def test_valid_smiles_enables_start_button() -> None:
     at.text_area[0].input("CCO\nCC(=O)O[Na]").run()
 
     assert at.session_state["raw_input"] is not None
-    assert "2 molecules detected" in at.success[0].value
+    assert "2 moléculas detectadas" in at.success[0].value
     assert not at.button[0].disabled
 
 
