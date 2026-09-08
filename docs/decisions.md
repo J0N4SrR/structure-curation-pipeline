@@ -41,6 +41,8 @@ padronização; a revalidação das evidências é obrigatória em qualquer upgr
 | [D-08](#d-08--fallback-de-parsing) | Sem OpenBabel/Indigo no MVP | Provisória | não | — |
 | [D-09](#d-09--formato-de-entrada-e-escopo-do-checker) | SMILES primário | Provisória | sim | — |
 | [D-10](#d-10--critérios-de-elegibilidade) | Cortes aplicados ao *parent* | Aceita | sim | — |
+| [D-11](#d-11--política-isotópica) | Marcação isotópica removida | Aceita | sim | sim |
+| [D-12](#d-12--entradas-sem-carbono) | Inorgânicos aceitos por padrão | Provisória | sim | não |
 
 ---
 
@@ -559,6 +561,110 @@ introduzidos pela interação com D-06.
 
 ---
 
+## D-11 — Política isotópica
+
+**Status:** Aceita · 2026-09-07
+
+### Contexto
+
+`get_parent_mol` chama `get_isotope_parent_mol` antes do stripping de fragmentos,
+zerando o número de massa de todo átomo marcado. A política estava **implementada
+mas não registrada**, e uma política não registrada não é auditável: quem lê o
+dataset não tem como saber se um composto deuterado foi preservado ou colapsado no
+seu análogo comum.
+
+Comportamento medido, consistente em todos os casos testados:
+
+| entrada | saída | igual ao análogo não marcado? |
+| --- | --- | :---: |
+| `[2H]C(Cl)(Cl)Cl` | `ClC(Cl)Cl` | sim |
+| `[12CH3][13CH3]` | `CC` | sim |
+| `[2H]c1ccccc1` | `c1ccccc1` | sim |
+| `[2H]C([2H])([2H])C([2H])([2H])[2H]` | `CC` | sim |
+| `[13CH4]` | `C` | sim |
+
+### Decisão
+
+**REMOVE.** A marcação isotópica é descartada na obtenção da estrutura-mãe,
+seguindo a referência. Não há modo de preservação, e o pipeline nunca testa as duas
+políticas ao mesmo tempo.
+
+### Consequência mensurável
+
+Compostos que diferem **apenas** pela marcação isotópica colapsam na mesma
+identidade e são contabilizados como duplicatas exatas. Um estudo que use padrões
+internos deuterados precisa saber disto antes de deduplicar: a fração do dataset
+afetada é o número a reportar.
+
+### Alternativas rejeitadas
+
+- **Preservar isótopos** — rejeitada: exigiria contornar `get_isotope_parent_mol`,
+  violando a [D-01](#d-01--motor-químico-central).
+- **Coluna auxiliar com a identidade isotópica** — não rejeitada, apenas adiada:
+  faz sentido se e quando o corpus contiver compostos marcados em número relevante.
+
+---
+
+## D-12 — Entradas sem carbono
+
+**Status:** Provisória · 2026-09-07 · reavaliação com o corpus real
+
+### Contexto
+
+Entradas puramente inorgânicas atravessam o pipeline e são aprovadas como estrutura
+curada:
+
+| entrada | resultado | `exclude_flag` |
+| --- | --- | :---: |
+| `[Na+].[Cl-]` | `[Cl-].[Na+]` aprovado | não |
+| `[Cu+2]` | `[Cu+2]` aprovado | sim |
+| `CC(=O)[O-].[Cu+2].CC(=O)[O-]` | inalterado, aprovado | sim |
+| `CCO.CC(=O)C` (só solventes) | ambos aprovados | não |
+
+O cloreto de sódio passa porque tanto `Sodium` quanto `Chloride` constam de
+`salts.smi`: dispara o guard "todos os componentes são sal, então mantém tudo" da
+[D-06](#d-06--entidades-multicomponentes). Não é acidente da implementação — é o
+comportamento da referência.
+
+Isso nunca havia sido decidido. Para um pipeline de moléculas pequenas orgânicas,
+NaCl aprovado como composto curado é ruído; mas rejeitá-lo no motor divergiria da
+referência, contra a [D-01](#d-01--motor-químico-central).
+
+### Decisão
+
+O **motor não muda**: a semântica da referência é preservada e entradas sem carbono
+continuam atravessando. A exclusão vira **critério de elegibilidade opcional**,
+`require_carbon`, no mesmo lugar e com a mesma natureza dos cortes de peso e de
+átomos pesados ([D-10](#d-10--critérios-de-elegibilidade)) — escopo do estudo, não
+química.
+
+**Padrão: desligado.** Ligar por omissão mudaria silenciosamente o resultado de
+lotes já processados. Quem quiser o dataset estritamente orgânico opta por ele:
+
+```
+curation --input entrada.csv --out-dir saida --require-carbon
+```
+
+### Impacto no schema
+
+- `EligibilityCriteria.require_carbon: bool = False`
+- `rejection_code` admite `ERR_NO_CARBON`
+
+### Consequência mensurável
+
+Número de entradas sem carbono no corpus, com e sem o critério ligado. Se a fração
+for material, esta ADR deve ser promovida a Aceita com padrão invertido — e essa
+promoção é, ela própria, um resultado da caracterização do dataset.
+
+### Alternativas rejeitadas
+
+- **Rejeitar no motor** — rejeitada: divergiria da referência sem justificativa
+  química, apenas de escopo.
+- **Ligar por padrão** — rejeitada por ora: muda resultado sem evidência sobre a
+  composição do corpus real.
+
+---
+
 ## Rastreabilidade
 
 Cada registro processado carrega:
@@ -582,7 +688,9 @@ hash e, por construção, marca os lotes anteriores como produzidos sob outra po
 | D-04 | — | D-07 (auxiliar, não identidade) |
 | D-06 | D-01 | D-10 (soma dos componentes) |
 | D-09 | — | D-01 (ordem: instrumentar antes, rejeitar depois) |
-| D-10 | D-06 | D-03 |
+| D-10 | D-06 | D-03, D-12 |
+| D-11 | D-01 (não há como preservar sem violar) | D-07 (isotopólogos colapsam) |
+| D-12 | D-01, D-06 (guard "tudo é sal") | D-10 (mesmo estágio) |
 
 ## Registro de revisões
 
@@ -590,3 +698,5 @@ hash e, por construção, marca os lotes anteriores como produzidos sob outra po
 | --- | --- |
 | 2026-09-07 | Criação do documento com D-01 a D-10 |
 | 2026-09-07 | D-04: acrescentada a evidência de perda de estereoquímica na canonicalização tautomérica, medida na ablação da Fase 5 |
+| 2026-09-07 | D-11: política isotópica registrada (já estava implementada, não documentada) |
+| 2026-09-07 | D-12: contrato para entradas sem carbono, com critério opcional `require_carbon` |

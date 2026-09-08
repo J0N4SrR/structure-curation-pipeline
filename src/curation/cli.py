@@ -62,6 +62,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="número máximo de átomos pesados na estrutura-mãe",
     )
     parser.add_argument(
+        "--require-carbon",
+        action="store_true",
+        help=(
+            "rejeita estruturas sem carbono (sais inorgânicos, íons metálicos "
+            "isolados). Desligado por padrão — ver D-12"
+        ),
+    )
+    parser.add_argument(
         "--decisions",
         type=Path,
         default=DEFAULT_DECISIONS,
@@ -121,7 +129,9 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
         RDLogger.DisableLog("rdApp.*")
 
     criteria = EligibilityCriteria(
-        max_molecular_weight=args.max_mw, max_heavy_atoms=args.max_ha
+        max_molecular_weight=args.max_mw,
+        max_heavy_atoms=args.max_ha,
+        require_carbon=args.require_carbon,
     )
     pipeline = CurationPipeline(
         policy_hash=_resolve_policy_hash(args.decisions),

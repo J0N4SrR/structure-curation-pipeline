@@ -242,6 +242,7 @@ class CurationPipeline:
         return {
             "max_mw": self.criteria.max_molecular_weight,
             "max_ha": self.criteria.max_heavy_atoms,
+            "require_carbon": self.criteria.require_carbon,
             "deduplicate": self.deduplicate,
             "pipeline_version": self.pipeline_version,
         }

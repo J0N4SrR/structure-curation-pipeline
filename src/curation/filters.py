@@ -33,12 +33,16 @@ class EligibilityCriteria:
 
     max_molecular_weight: float = 1000.0
     max_heavy_atoms: int = 100
+    require_carbon: bool = False
 
     def describe(self) -> str:
-        return (
+        text = (
             f"MW <= {self.max_molecular_weight:g} Da, "
             f"átomos pesados <= {self.max_heavy_atoms}"
         )
+        if self.require_carbon:
+            text += ", apenas estruturas contendo carbono"
+        return text
 
 
 @dataclass(frozen=True)
@@ -53,6 +57,7 @@ class EligibilityVerdict:
     eligible: bool
     molecular_weight: float
     heavy_atoms: int
+    carbon_atoms: int = 0
     rejection_code: Optional[RejectionCode] = None
     detail: str = ""
 
@@ -74,6 +79,11 @@ def molecular_properties(mol: Chem.Mol) -> tuple[float, int]:
     return float(weight), int(mol.GetNumHeavyAtoms())
 
 
+def count_carbon(mol: Chem.Mol) -> int:
+    """Átomos de carbono na estrutura. Base do critério opcional da D-12."""
+    return sum(1 for atom in mol.GetAtoms() if atom.GetAtomicNum() == 6)
+
+
 def evaluate(
     mol: Chem.Mol,
     criteria: EligibilityCriteria,
@@ -93,13 +103,28 @@ def evaluate(
     moléculas médias. Sem esse registro o falso positivo é indistinguível na revisão.
     """
     weight, heavy_atoms = molecular_properties(mol)
+    carbon_atoms = count_carbon(mol)
     context = f" (componentes na estrutura-mãe: {n_components})" if n_components > 1 else ""
+
+    if criteria.require_carbon and not carbon_atoms:
+        return EligibilityVerdict(
+            eligible=False,
+            molecular_weight=weight,
+            heavy_atoms=heavy_atoms,
+            carbon_atoms=carbon_atoms,
+            rejection_code=RejectionCode.ERR_NO_CARBON,
+            detail=(
+                "estrutura sem átomos de carbono: fora do escopo de moléculas "
+                f"pequenas orgânicas{context}"
+            ),
+        )
 
     if weight > criteria.max_molecular_weight:
         return EligibilityVerdict(
             eligible=False,
             molecular_weight=weight,
             heavy_atoms=heavy_atoms,
+            carbon_atoms=carbon_atoms,
             rejection_code=RejectionCode.ERR_MW_LIMIT,
             detail=(
                 f"peso molecular {weight:.2f} Da excede o limite de "
@@ -112,6 +137,7 @@ def evaluate(
             eligible=False,
             molecular_weight=weight,
             heavy_atoms=heavy_atoms,
+            carbon_atoms=carbon_atoms,
             rejection_code=RejectionCode.ERR_HA_LIMIT,
             detail=(
                 f"{heavy_atoms} átomos pesados excedem o limite de "
@@ -120,5 +146,8 @@ def evaluate(
         )
 
     return EligibilityVerdict(
-        eligible=True, molecular_weight=weight, heavy_atoms=heavy_atoms
+        eligible=True,
+        molecular_weight=weight,
+        heavy_atoms=heavy_atoms,
+        carbon_atoms=carbon_atoms,
     )
