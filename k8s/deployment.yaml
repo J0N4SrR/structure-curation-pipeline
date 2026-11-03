@@ -1,19 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: meu-nginx
+  name: pipeline-app
 spec:
   replicas: 5
   selector:
     matchLabels:
-      app: nginx
+      app: pipeline-app
   template:
     metadata:
       labels:
-        app: nginx
+        app: pipeline-app
     spec:
       containers:
-      - name: nginx
-        image: nginx:latest
+      - name: pipeline-app
+        image: pipeline-app:v1
+        imagePullPolicy: Never
         ports:
-        - containerPort: 80
+        - containerPort: 8000
