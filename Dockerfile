@@ -1,8 +1,12 @@
-FROM python:3.10-slim
+FROM python:3.12-slim
 WORKDIR /app
+
+# Instalar dependências
 COPY requirements.txt .
 RUN pip install -r requirements.txt
+
+# Copiar o código da aplicação
 COPY . .
-# Supondo que sua aplicação rode na porta 8000
-EXPOSE 8000
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+# Comando correto para iniciar a sua app Streamlit
+CMD ["streamlit", "run", "streamlit_app.py", "--server.port=8000", "--server.address=0.0.0.0"]
