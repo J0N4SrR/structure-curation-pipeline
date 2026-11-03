@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: pipeline-app
-        image: pipeline-app:v1
+        image: pipeline-app:v2
         imagePullPolicy: Never
         ports:
         - containerPort: 8000
